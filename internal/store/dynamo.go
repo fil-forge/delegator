@@ -10,10 +10,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/fil-forge/go-ucanto/did"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/storacha/go-ucanto/did"
 
-	"github.com/storacha/delegator/internal/config"
+	"github.com/fil-forge/delegator/internal/config"
 )
 
 var log = logging.Logger("store/dynamo")

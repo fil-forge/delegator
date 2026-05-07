@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/storacha/go-ucanto/did"
+	"github.com/fil-forge/go-ucanto/did"
 )
 
 // StorageProviderInfo represents the provider metadata table

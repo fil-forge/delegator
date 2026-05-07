@@ -11,16 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fil-forge/delegator/internal/services/benchmark/client"
+	"github.com/fil-forge/go-libstoracha/capabilities/blob"
+	"github.com/fil-forge/go-libstoracha/capabilities/blob/replica"
+	"github.com/fil-forge/go-libstoracha/capabilities/pdp"
+	"github.com/fil-forge/go-ucanto/core/delegation"
+	"github.com/fil-forge/go-ucanto/core/ipld/hash/sha256"
+	"github.com/fil-forge/go-ucanto/did"
+	"github.com/fil-forge/go-ucanto/principal"
 	"github.com/ipfs/go-cid"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
-	"github.com/storacha/delegator/internal/services/benchmark/client"
-	"github.com/storacha/go-libstoracha/capabilities/blob"
-	"github.com/storacha/go-libstoracha/capabilities/blob/replica"
-	"github.com/storacha/go-libstoracha/capabilities/pdp"
-	"github.com/storacha/go-ucanto/core/delegation"
-	"github.com/storacha/go-ucanto/core/ipld/hash/sha256"
-	"github.com/storacha/go-ucanto/did"
-	"github.com/storacha/go-ucanto/principal"
 	"go.uber.org/fx"
 )
 
@@ -141,7 +141,7 @@ func (s *Service) BenchmarkUpload(ctx context.Context, params BenchmarkUploadPar
 
 	var pieceLink string
 	if blobResult.PDPAccept != nil {
-		pieceLink = blobResult.PDPAccept.Piece.V1Link().String()
+		pieceLink = cid.NewCidV1(cid.Raw, blobResult.PDPAccept.Blob).String()
 	}
 
 	return &BenchmarkUploadResult{

@@ -6,25 +6,26 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/fil-forge/go-libstoracha/capabilities/assert"
+	"github.com/fil-forge/go-libstoracha/capabilities/blob"
+	"github.com/fil-forge/go-libstoracha/capabilities/pdp"
+	"github.com/fil-forge/go-libstoracha/capabilities/types"
+	"github.com/fil-forge/go-libstoracha/piece/piece"
+	"github.com/fil-forge/go-ucanto/client"
+	"github.com/fil-forge/go-ucanto/core/dag/blockstore"
+	"github.com/fil-forge/go-ucanto/core/delegation"
+	"github.com/fil-forge/go-ucanto/core/invocation"
+	"github.com/fil-forge/go-ucanto/core/receipt"
+	"github.com/fil-forge/go-ucanto/core/result"
+	"github.com/fil-forge/go-ucanto/core/result/failure"
+	fdm "github.com/fil-forge/go-ucanto/core/result/failure/datamodel"
+	"github.com/fil-forge/go-ucanto/did"
+	"github.com/fil-forge/go-ucanto/principal"
+	uhttp "github.com/fil-forge/go-ucanto/transport/http"
+	"github.com/fil-forge/go-ucanto/ucan"
 	"github.com/ipld/go-ipld-prime/datamodel"
+	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/multiformats/go-multihash"
-	"github.com/storacha/go-libstoracha/capabilities/assert"
-	"github.com/storacha/go-libstoracha/capabilities/blob"
-	"github.com/storacha/go-libstoracha/capabilities/pdp"
-	"github.com/storacha/go-libstoracha/capabilities/types"
-	"github.com/storacha/go-libstoracha/piece/piece"
-	"github.com/storacha/go-ucanto/client"
-	"github.com/storacha/go-ucanto/core/dag/blockstore"
-	"github.com/storacha/go-ucanto/core/delegation"
-	"github.com/storacha/go-ucanto/core/invocation"
-	"github.com/storacha/go-ucanto/core/receipt"
-	"github.com/storacha/go-ucanto/core/result"
-	"github.com/storacha/go-ucanto/core/result/failure"
-	fdm "github.com/storacha/go-ucanto/core/result/failure/datamodel"
-	"github.com/storacha/go-ucanto/did"
-	"github.com/storacha/go-ucanto/principal"
-	uhttp "github.com/storacha/go-ucanto/transport/http"
-	"github.com/storacha/go-ucanto/ucan"
 )
 
 var ErrNoReceipt = errors.New("no error for invocation")
@@ -193,7 +194,7 @@ func (s *Client) PDPInfo(ctx context.Context, pieceLink piece.PieceLink) (pdp.In
 		s.cfg.StorageNodeID,
 		s.cfg.StorageNodeID.DID().String(),
 		pdp.InfoCaveats{
-			Piece: pieceLink,
+			Blob: pieceLink.V1Link().(cidlink.Link).Cid.Hash(),
 		},
 		delegation.WithProof(s.cfg.StorageProof),
 	)
@@ -225,7 +226,7 @@ func (s *Client) PDPInfo(ctx context.Context, pieceLink piece.PieceLink) (pdp.In
 }
 
 func NewClient(cfg Config) (*Client, error) {
-	ch := uhttp.NewHTTPChannel(&cfg.StorageNodeURL)
+	ch := uhttp.NewChannel(&cfg.StorageNodeURL)
 	conn, err := client.NewConnection(cfg.StorageNodeID, ch)
 	if err != nil {
 		return nil, fmt.Errorf("setting up connection: %w", err)
