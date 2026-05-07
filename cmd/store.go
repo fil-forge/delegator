@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/fil-forge/delegator/internal/config"
+	"github.com/fil-forge/delegator/internal/store"
+	"github.com/fil-forge/go-ucanto/did"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/storacha/delegator/internal/config"
-	"github.com/storacha/delegator/internal/store"
-	"github.com/storacha/go-ucanto/did"
 )
 
 var StoreCmd = &cobra.Command{

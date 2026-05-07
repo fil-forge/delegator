@@ -9,13 +9,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/fil-forge/delegator/internal/services/benchmark"
+	"github.com/fil-forge/delegator/internal/services/registrar"
+	"github.com/fil-forge/go-ucanto/core/delegation"
+	"github.com/fil-forge/go-ucanto/did"
+	"github.com/fil-forge/go-ucanto/principal"
+	"github.com/fil-forge/go-ucanto/principal/signer"
 	"github.com/labstack/echo/v4"
-	"github.com/storacha/delegator/internal/services/benchmark"
-	"github.com/storacha/delegator/internal/services/registrar"
-	"github.com/storacha/go-ucanto/core/delegation"
-	"github.com/storacha/go-ucanto/did"
-	"github.com/storacha/go-ucanto/principal"
-	"github.com/storacha/go-ucanto/principal/signer"
 )
 
 type Handlers struct {

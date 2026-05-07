@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 
-	"github.com/storacha/delegator/cmd"
+	"github.com/fil-forge/delegator/cmd"
 )
 
 func main() {

@@ -15,7 +15,7 @@ COPY . .
 
 # Build with cross-compilation and stripped binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w" -o /app github.com/storacha/delegator
+    go build -ldflags="-s -w" -o /app github.com/fil-forge/delegator
 
 FROM alpine:latest AS prod
 

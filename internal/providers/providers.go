@@ -13,19 +13,19 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/storacha/delegator/internal/services/registrar"
-	"github.com/storacha/forgectl/pkg/services/chain"
-	"github.com/storacha/forgectl/pkg/services/inspector"
-	"github.com/storacha/forgectl/pkg/services/operator"
-	"github.com/storacha/forgectl/pkg/services/types"
-	"github.com/storacha/go-ucanto/core/delegation"
-	"github.com/storacha/go-ucanto/did"
-	"github.com/storacha/go-ucanto/principal"
-	ed25519 "github.com/storacha/go-ucanto/principal/ed25519/signer"
-	"github.com/storacha/go-ucanto/principal/signer"
+	"github.com/fil-forge/delegator/internal/services/registrar"
+	"github.com/fil-forge/forgectl/pkg/services/chain"
+	"github.com/fil-forge/forgectl/pkg/services/inspector"
+	"github.com/fil-forge/forgectl/pkg/services/operator"
+	"github.com/fil-forge/forgectl/pkg/services/types"
+	"github.com/fil-forge/go-ucanto/core/delegation"
+	"github.com/fil-forge/go-ucanto/did"
+	"github.com/fil-forge/go-ucanto/principal"
+	ed25519 "github.com/fil-forge/go-ucanto/principal/ed25519/signer"
+	"github.com/fil-forge/go-ucanto/principal/signer"
 	"go.uber.org/fx"
 
-	"github.com/storacha/delegator/internal/config"
+	"github.com/fil-forge/delegator/internal/config"
 )
 
 type SignerParams struct {
