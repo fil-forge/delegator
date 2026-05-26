@@ -9,26 +9,25 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/fil-forge/delegator/internal/services/benchmark"
-	"github.com/fil-forge/delegator/internal/services/registrar"
-	"github.com/fil-forge/go-ucanto/core/delegation"
-	"github.com/fil-forge/go-ucanto/did"
-	"github.com/fil-forge/go-ucanto/principal"
-	"github.com/fil-forge/go-ucanto/principal/signer"
+	"github.com/fil-forge/ucantone/ucan/container"
 	"github.com/labstack/echo/v4"
+
+	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/principal"
+	"github.com/fil-forge/ucantone/principal/signer"
+
+	"github.com/fil-forge/delegator/internal/services/registrar"
 )
 
 type Handlers struct {
-	id               principal.Signer
-	service          *registrar.Service
-	benchmarkService *benchmark.Service
+	id      principal.Signer
+	service *registrar.Service
 }
 
-func NewHandlers(svcID principal.Signer, svc *registrar.Service, benchmarkSvc *benchmark.Service) *Handlers {
+func NewHandlers(svcID principal.Signer, svc *registrar.Service) *Handlers {
 	return &Handlers{
-		id:               svcID,
-		service:          svc,
-		benchmarkService: benchmarkSvc,
+		id:      svcID,
+		service: svc,
 	}
 }
 
@@ -69,7 +68,7 @@ func (h *Handlers) DIDDocument(c echo.Context) error {
 		ID:      h.id.DID().String(),
 	}
 
-	if s, ok := h.id.(signer.WrappedSigner); ok {
+	if s, ok := h.id.(*signer.WrappedSigner); ok {
 		vid := fmt.Sprintf("%s#owner", s.DID())
 		doc.VerificationMethod = []VerificationMethod{
 			{
@@ -92,7 +91,6 @@ type RegisterRequest struct {
 	ProofSetID    uint64 `json:"proof_set_id"`
 	OperatorEmail string `json:"operator_email"`
 	PublicURL     string `json:"public_url"`
-	Proof         string `json:"proof"`
 }
 
 func (h *Handlers) Register(c echo.Context) error {
@@ -120,7 +118,6 @@ func (h *Handlers) Register(c echo.Context) error {
 		ProofSetID:    req.ProofSetID,
 		OperatorEmail: req.OperatorEmail,
 		PublicURL:     *endpoint,
-		Proof:         req.Proof,
 	}); err != nil {
 		var status int
 		var message string
@@ -164,8 +161,8 @@ type RequestProofsResponse struct {
 }
 
 type Proofs struct {
-	Indexer       string `json:"indexer"`
-	EgressTracker string `json:"egress_tracker"`
+	Indexer       []byte `json:"indexer"`
+	EgressTracker []byte `json:"egress_tracker"`
 }
 
 func (h *Handlers) RequestProofs(c echo.Context) error {
@@ -192,14 +189,14 @@ func (h *Handlers) RequestProofs(c echo.Context) error {
 		})
 	}
 
-	indexerProofStr, err := delegation.Format(indexerProof)
+	indexerProofStr, err := container.Encode(container.RawGzip, indexerProof)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to read generated indexer proof",
 		})
 	}
 
-	egressTrackerProofStr, err := delegation.Format(egressTrackerProof)
+	egressTrackerProofStr, err := container.Encode(container.RawGzip, egressTrackerProof)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to read generated egress tracker proof",
@@ -240,96 +237,6 @@ func (h *Handlers) IsRegistered(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusNotFound)
-}
-
-type BenchmarkUploadRequest struct {
-	OperatorDID      string `json:"operator_did"`
-	OperatorEndpoint string `json:"operator_endpoint"`
-	OperatorProof    string `json:"operator_proof"`
-	Size             int64  `json:"size"`
-}
-
-type BenchmarkUploadResponse struct {
-	AllocateDuration string `json:"allocate_duration"`
-	UploadDuration   string `json:"upload_duration"`
-	AcceptDuration   string `json:"accept_duration"`
-	DownloadURL      string `json:"download_url"`
-	PieceLink        string `json:"piece_link"`
-}
-
-func (h *Handlers) BenchmarkUpload(c echo.Context) error {
-	var req BenchmarkUploadRequest
-	if err := c.Bind(&req); err != nil {
-		return c.String(http.StatusBadRequest, "invalid request body")
-	}
-
-	// validate request
-	operator, err := did.Parse(req.OperatorDID)
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid operator DID")
-	}
-
-	endpoint, err := url.Parse(req.OperatorEndpoint)
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid operator endpoint URL")
-	}
-
-	if req.Size <= 0 {
-		return c.String(http.StatusBadRequest, "size must be greater than 0")
-	}
-
-	result, err := h.benchmarkService.BenchmarkUpload(c.Request().Context(), benchmark.BenchmarkUploadParams{
-		OperatorID:       operator,
-		OperatorEndpoint: *endpoint,
-		OperatorProof:    req.OperatorProof,
-		Size:             req.Size,
-	})
-	if err != nil {
-		// TODO map the errors the service returns to http codes
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, BenchmarkUploadResponse{
-		AllocateDuration: result.AllocateDuration.String(),
-		UploadDuration:   result.UploadDuration.String(),
-		AcceptDuration:   result.AcceptDuration.String(),
-		DownloadURL:      result.DownloadURL,
-		PieceLink:        result.PieceLink,
-	})
-}
-
-type BenchmarkDownloadRequest struct {
-	Endpoint string `json:"endpoint"`
-}
-
-type BenchmarkDownloadResponse struct {
-	DownloadDuration string `json:"download_duration"`
-}
-
-func (h *Handlers) BenchmarkDownload(c echo.Context) error {
-	var req BenchmarkDownloadRequest
-	if err := c.Bind(&req); err != nil {
-		return c.String(http.StatusBadRequest, "invalid request body")
-	}
-
-	endpoint, err := url.Parse(req.Endpoint)
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid endpoint URL")
-	}
-
-	result, err := h.benchmarkService.BenchmarkDownload(c.Request().Context(), *endpoint)
-	if err != nil {
-		// TODO map the errors the service returns to http codes
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": err.Error(),
-		})
-	}
-
-	return c.JSON(http.StatusOK, BenchmarkDownloadResponse{
-		DownloadDuration: result.DownloadDuration.String(),
-	})
 }
 
 // ContractApprovalRequest represents a request to approve a provider for registration

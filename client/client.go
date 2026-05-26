@@ -77,7 +77,6 @@ type RegisterRequest struct {
 	ProofSetID    uint64 `json:"proof_set_id"`
 	OperatorEmail string `json:"operator_email"`
 	PublicURL     string `json:"public_url"`
-	Proof         string `json:"proof"`
 }
 
 func (c *Client) Register(ctx context.Context, req *RegisterRequest) error {
@@ -158,8 +157,8 @@ type RequestProofsResponse struct {
 }
 
 type Proofs struct {
-	Indexer       string `json:"indexer"`
-	EgressTracker string `json:"egress_tracker"`
+	Indexer       []byte `json:"indexer"`
+	EgressTracker []byte `json:"egress_tracker"`
 }
 
 func (c *Client) RequestProofs(ctx context.Context, did string) (*RequestProofsResponse, error) {
@@ -251,102 +250,6 @@ func (c *Client) DIDDocument(ctx context.Context) (*DIDDocumentResponse, error) 
 	}
 
 	var result DIDDocumentResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &result, nil
-}
-
-type BenchmarkUploadRequest struct {
-	OperatorDID      string `json:"operator_did"`
-	OperatorEndpoint string `json:"operator_endpoint"`
-	OperatorProof    string `json:"operator_proof"`
-	Size             int64  `json:"size"`
-}
-
-type BenchmarkUploadResponse struct {
-	AllocateDuration string `json:"allocate_duration"`
-	UploadDuration   string `json:"upload_duration"`
-	AcceptDuration   string `json:"accept_duration"`
-	DownloadURL      string `json:"download_url,omitempty"`
-	PieceLink        string `json:"piece_link,omitempty"`
-}
-
-func (c *Client) BenchmarkUpload(ctx context.Context, req *BenchmarkUploadRequest) (*BenchmarkUploadResponse, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/benchmark/upload", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp map[string]string
-		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
-			if errMsg, ok := errResp["error"]; ok {
-				return nil, fmt.Errorf("benchmark upload failed: %s", errMsg)
-			}
-		}
-		return nil, fmt.Errorf("benchmark upload failed with status: %d", resp.StatusCode)
-	}
-
-	var result BenchmarkUploadResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &result, nil
-}
-
-type BenchmarkDownloadRequest struct {
-	Endpoint string `json:"endpoint"`
-}
-
-type BenchmarkDownloadResponse struct {
-	DownloadDuration string `json:"download_duration"`
-}
-
-func (c *Client) BenchmarkDownload(ctx context.Context, endpoint string) (*BenchmarkDownloadResponse, error) {
-	req := &BenchmarkDownloadRequest{Endpoint: endpoint}
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/benchmark/download", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp map[string]string
-		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
-			if errMsg, ok := errResp["error"]; ok {
-				return nil, fmt.Errorf("benchmark download failed: %s", errMsg)
-			}
-		}
-		return nil, fmt.Errorf("benchmark download failed with status: %d", resp.StatusCode)
-	}
-
-	var result BenchmarkDownloadResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}

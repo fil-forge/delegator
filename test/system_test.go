@@ -3,8 +3,6 @@ package test
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,28 +12,26 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/fil-forge/go-libstoracha/capabilities/blob"
-	"github.com/fil-forge/go-libstoracha/capabilities/blob/replica"
-	"github.com/fil-forge/go-libstoracha/capabilities/claim"
-	"github.com/fil-forge/go-libstoracha/capabilities/pdp"
-	"github.com/fil-forge/go-libstoracha/capabilities/space/egress"
-	"github.com/fil-forge/go-ucanto/core/delegation"
-	"github.com/fil-forge/go-ucanto/did"
-	"github.com/fil-forge/go-ucanto/principal"
-	ed25519signer "github.com/fil-forge/go-ucanto/principal/ed25519/signer"
-	"github.com/fil-forge/go-ucanto/ucan"
+	"github.com/fil-forge/ucantone/ucan/container"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
+
+	forgetypes "github.com/fil-forge/forgectl/pkg/services/types"
+	"github.com/fil-forge/libforge/commands/claim"
+	"github.com/fil-forge/libforge/commands/space/egress"
+	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/principal"
+	ed25519signer "github.com/fil-forge/ucantone/principal/ed25519"
+	"github.com/fil-forge/ucantone/ucan"
+	"github.com/fil-forge/ucantone/ucan/delegation"
 
 	"github.com/fil-forge/delegator/client"
 	"github.com/fil-forge/delegator/internal/config"
 	"github.com/fil-forge/delegator/internal/handlers"
 	"github.com/fil-forge/delegator/internal/server"
-	"github.com/fil-forge/delegator/internal/services/benchmark"
 	"github.com/fil-forge/delegator/internal/services/registrar"
 	"github.com/fil-forge/delegator/internal/store"
-	forgetypes "github.com/fil-forge/forgectl/pkg/services/types"
 )
 
 // mockStore implements the store.Store interface for testing
@@ -101,56 +97,18 @@ func (m *mockStore) getProvider(did did.DID) (store.StorageProviderInfo, bool) {
 
 // Helper functions for test data generation
 func generateTestSigner(t *testing.T) principal.Signer {
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("failed to generate key: %v", err)
-	}
-	signer, err := ed25519signer.FromRaw(priv)
+	signer, err := ed25519signer.Generate()
 	if err != nil {
 		t.Fatalf("failed to create signer: %v", err)
 	}
 	return signer
 }
 
-func generateTestProof(t *testing.T, issuer, audience principal.Signer, abilities []string, resource did.DID) string {
-	caps := make([]ucan.Capability[ucan.NoCaveats], 0, len(abilities))
-	for _, ability := range abilities {
-		caps = append(caps, ucan.NewCapability(
-			ability,
-			resource.String(),
-			ucan.NoCaveats{},
-		))
-	}
-
-	dlg, err := delegation.Delegate(
-		issuer,
-		audience.DID(),
-		caps,
-		delegation.WithNoExpiration(),
-	)
-	if err != nil {
-		t.Fatalf("failed to create delegation: %v", err)
-	}
-
-	proof, err := delegation.Format(dlg)
-	if err != nil {
-		t.Fatalf("failed to format delegation: %v", err)
-	}
-
-	return proof
-}
-
-func generateIndexingProof(t *testing.T, indexingSigner, delegatorSigner principal.Signer) delegation.Delegation {
-	dlg, err := delegation.Delegate(
+func generateIndexingProof(t *testing.T, indexingSigner, delegatorSigner principal.Signer) ucan.Delegation {
+	dlg, err := claim.Cache.Delegate(
 		indexingSigner,
 		delegatorSigner.DID(),
-		[]ucan.Capability[ucan.NoCaveats]{
-			ucan.NewCapability(
-				claim.CacheAbility,
-				indexingSigner.DID().String(),
-				ucan.NoCaveats{},
-			),
-		},
+		indexingSigner.DID(),
 		delegation.WithNoExpiration(),
 	)
 	if err != nil {
@@ -159,23 +117,32 @@ func generateIndexingProof(t *testing.T, indexingSigner, delegatorSigner princip
 	return dlg
 }
 
-func generateEgressTrackingProof(t *testing.T, egressTrackingSigner, delegatorSigner principal.Signer) delegation.Delegation {
-	dlg, err := delegation.Delegate(
+func generateEgressTrackingProof(t *testing.T, egressTrackingSigner, delegatorSigner principal.Signer) ucan.Delegation {
+	dlg, err := egress.Track.Delegate(
 		egressTrackingSigner,
 		delegatorSigner.DID(),
-		[]ucan.Capability[ucan.NoCaveats]{
-			ucan.NewCapability(
-				egress.TrackAbility,
-				egressTrackingSigner.DID().String(),
-				ucan.NoCaveats{},
-			),
-		},
+		egressTrackingSigner.DID(),
 		delegation.WithNoExpiration(),
 	)
 	if err != nil {
 		t.Fatalf("failed to create indexing proof: %v", err)
 	}
 	return dlg
+}
+
+// findDelegationByIssuer returns the first delegation in ct whose issuer matches
+// the given DID. Containers returned by the delegator hold both the upstream
+// proof and the freshly-minted hop; tests use this to pick the hop the
+// delegator just signed.
+func findDelegationByIssuer(t *testing.T, ct *container.Container, issuer did.DID) ucan.Delegation {
+	t.Helper()
+	for _, d := range ct.Delegations() {
+		if d.Issuer() == issuer {
+			return d
+		}
+	}
+	t.Fatalf("no delegation in container issued by %s", issuer)
+	return nil
 }
 
 // mockStorageNode simulates a storage node server
@@ -311,16 +278,15 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, p
 				fx.ResultTags(`name:"upload_service_did"`),
 			),
 			fx.Annotate(
-				func() delegation.Delegation { return indexingProof },
+				func() ucan.Delegation { return indexingProof },
 				fx.ResultTags(`name:"indexing_service_proof"`),
 			),
 			fx.Annotate(
-				func() delegation.Delegation { return egressTrackingProof },
+				func() ucan.Delegation { return egressTrackingProof },
 				fx.ResultTags(`name:"egress_tracking_service_proof"`),
 			),
 			func() registrar.ContractOperator { return mockContractOp },
 			registrar.New,
-			benchmark.New,
 			handlers.NewHandlers,
 			server.NewServer,
 		),
@@ -332,7 +298,7 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, p
 	// Wait for server to be ready
 	serverURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	for i := 0; i < 50; i++ {
-		resp, err := http.Get(serverURL + "/health")
+		resp, err := http.Get(serverURL + "/healthcheck")
 		if err == nil && resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
 			break
@@ -387,7 +353,7 @@ func TestSystemDIDDocument(t *testing.T) {
 
 func TestSystemRegistrationFlow(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, _, _, _, uploadSigner, _ := setupTestServer(t, mockStore)
+	app, serverURL, _, _, _, _, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -403,22 +369,14 @@ func TestSystemRegistrationFlow(t *testing.T) {
 	// Allow the storage node DID
 	mockStore.allowDID(storageNode.did)
 
-	// Generate proof for registration
-	proof := generateTestProof(t, storageNode.signer, uploadSigner,
-		[]string{blob.AcceptAbility, blob.AllocateAbility, replica.AllocateAbility, pdp.InfoAbility},
-		storageNode.did)
-
-	ctx := context.Background()
-
 	// Test registration
 	t.Run("successful registration", func(t *testing.T) {
-		err = c.Register(ctx, &client.RegisterRequest{
+		err = c.Register(t.Context(), &client.RegisterRequest{
 			Operator:      storageNode.did.String(),
 			OwnerAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890").String(),
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     storageNode.url(),
-			Proof:         proof,
 		})
 		if err != nil {
 			t.Fatalf("registration failed: %v", err)
@@ -435,13 +393,12 @@ func TestSystemRegistrationFlow(t *testing.T) {
 	})
 
 	t.Run("duplicate registration should fail", func(t *testing.T) {
-		err = c.Register(ctx, &client.RegisterRequest{
+		err = c.Register(t.Context(), &client.RegisterRequest{
 			Operator:      storageNode.did.String(),
 			OwnerAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890").String(),
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     storageNode.url(),
-			Proof:         proof,
 		})
 		if err == nil {
 			t.Fatal("expected duplicate registration to fail")
@@ -453,17 +410,12 @@ func TestSystemRegistrationFlow(t *testing.T) {
 		unauthorizedNode := newMockStorageNode(t)
 		defer unauthorizedNode.close()
 
-		proof := generateTestProof(t, unauthorizedSigner, uploadSigner,
-			[]string{blob.AcceptAbility, blob.AllocateAbility, replica.AllocateAbility, pdp.InfoAbility},
-			unauthorizedSigner.DID())
-
-		err = c.Register(ctx, &client.RegisterRequest{
+		err = c.Register(t.Context(), &client.RegisterRequest{
 			Operator:      unauthorizedSigner.DID().String(),
 			OwnerAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890").String(),
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     unauthorizedNode.url(),
-			Proof:         proof,
 		})
 		if err == nil {
 			t.Fatal("expected unauthorized registration to fail")
@@ -473,7 +425,7 @@ func TestSystemRegistrationFlow(t *testing.T) {
 
 func TestSystemIsRegistered(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, _, _, _, uploadSigner, _ := setupTestServer(t, mockStore)
+	app, serverURL, _, _, _, _, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -489,10 +441,6 @@ func TestSystemIsRegistered(t *testing.T) {
 	defer storageNode.close()
 	mockStore.allowDID(storageNode.did)
 
-	proof := generateTestProof(t, storageNode.signer, uploadSigner,
-		[]string{blob.AcceptAbility, blob.AllocateAbility, replica.AllocateAbility, pdp.InfoAbility},
-		storageNode.did)
-
 	// Register the node
 	err = c.Register(ctx, &client.RegisterRequest{
 		Operator:      storageNode.did.String(),
@@ -500,7 +448,6 @@ func TestSystemIsRegistered(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
-		Proof:         proof,
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -534,7 +481,7 @@ func TestSystemIsRegistered(t *testing.T) {
 
 func TestSystemRequestProofs(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, uploadSigner, _ := setupTestServer(t, mockStore)
+	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, _, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -550,10 +497,6 @@ func TestSystemRequestProofs(t *testing.T) {
 	defer storageNode.close()
 	mockStore.allowDID(storageNode.did)
 
-	proof := generateTestProof(t, storageNode.signer, uploadSigner,
-		[]string{blob.AcceptAbility, blob.AllocateAbility, replica.AllocateAbility, pdp.InfoAbility},
-		storageNode.did)
-
 	// Register the node
 	err = c.Register(ctx, &client.RegisterRequest{
 		Operator:      storageNode.did.String(),
@@ -561,7 +504,6 @@ func TestSystemRequestProofs(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
-		Proof:         proof,
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -574,69 +516,69 @@ func TestSystemRequestProofs(t *testing.T) {
 		}
 
 		// Verify indexer proof
-		if resp.Proofs.Indexer == "" {
+		if resp.Proofs.Indexer == nil {
 			t.Fatal("expected indexer proof to be returned")
 		}
 
-		// Verify the proof is valid
-		indxrDlg, err := delegation.Parse(resp.Proofs.Indexer)
+		indxrContainer, err := container.Decode(resp.Proofs.Indexer)
 		if err != nil {
-			t.Fatalf("failed to parse returned indexer proof: %v", err)
+			t.Fatalf("failed to parse returned indexer proof container: %v", err)
 		}
+		indxrDlg := findDelegationByIssuer(t, indxrContainer, delegatorSigner.DID())
 
 		// Verify issuer is the delegator
-		if indxrDlg.Issuer().DID().String() != delegatorSigner.DID().String() {
-			t.Fatalf("unexpected indexer proof issuer: got %s, want %s", indxrDlg.Issuer().DID().String(), delegatorSigner.DID().String())
+		if indxrDlg.Issuer() != delegatorSigner.DID() {
+			t.Fatalf("unexpected indexer proof issuer: got %s, want %s", indxrDlg.Issuer(), delegatorSigner.DID())
 		}
 
 		// Verify audience is the storage node
-		if indxrDlg.Audience().DID().String() != storageNode.did.String() {
-			t.Fatalf("unexpected indexer proof audience: got %s, want %s", indxrDlg.Audience().DID().String(), storageNode.did.String())
+		if indxrDlg.Audience() != storageNode.did {
+			t.Fatalf("unexpected indexer proof audience: got %s, want %s", indxrDlg.Audience(), storageNode.did)
 		}
 
 		// Verify capability
-		caps := indxrDlg.Capabilities()
-		if len(caps) != 1 {
-			t.Fatalf("unexpected number of capabilities in indexer proof: got %d, want 1", len(caps))
+		cmd := indxrDlg.Command()
+		if !cmd.Defined() {
+			t.Fatalf("indxer proof command not defined")
 		}
-		if caps[0].Can() != claim.CacheAbility {
-			t.Fatalf("unexpected capability in indexer proof: got %s, want %s", caps[0].Can(), claim.CacheAbility)
+		if !cmd.Proves(claim.Cache.Command) {
+			t.Fatalf("unexpected capability in indexer proof, does not prove %s", claim.Cache)
 		}
-		if caps[0].With() != indexingSigner.DID().String() {
-			t.Fatalf("unexpected capability resource in indexer proof: got %s, want %s", caps[0].With(), indexingSigner.DID().String())
+		if indxrDlg.Subject() != indexingSigner.DID() {
+			t.Fatalf("unexpected subject in indexer proof: got %s, want %s", indxrDlg.Subject(), indexingSigner.DID())
 		}
 
 		// Verify egress tracker proof
-		if resp.Proofs.EgressTracker == "" {
+		if resp.Proofs.EgressTracker == nil {
 			t.Fatal("expected egress tracker proof to be returned")
 		}
 
-		// Verify the proof is valid
-		etrackerDlg, err := delegation.Parse(resp.Proofs.EgressTracker)
+		etrackerContainer, err := container.Decode(resp.Proofs.EgressTracker)
 		if err != nil {
-			t.Fatalf("failed to parse returned egress tracker proof: %v", err)
+			t.Fatalf("failed to parse returned egress tracker proof container: %v", err)
 		}
+		etrackerDlg := findDelegationByIssuer(t, etrackerContainer, delegatorSigner.DID())
 
 		// Verify issuer is the delegator
-		if etrackerDlg.Issuer().DID().String() != delegatorSigner.DID().String() {
-			t.Fatalf("unexpected egress tracker proof issuer: got %s, want %s", etrackerDlg.Issuer().DID().String(), delegatorSigner.DID().String())
+		if etrackerDlg.Issuer() != delegatorSigner.DID() {
+			t.Fatalf("unexpected egress tracker proof issuer: got %s, want %s", etrackerDlg.Issuer(), delegatorSigner.DID())
 		}
 
 		// Verify audience is the storage node
-		if etrackerDlg.Audience().DID().String() != storageNode.did.String() {
-			t.Fatalf("unexpected egress tracker proof audience: got %s, want %s", etrackerDlg.Audience().DID().String(), storageNode.did.String())
+		if etrackerDlg.Audience() != storageNode.did {
+			t.Fatalf("unexpected egress tracker proof audience: got %s, want %s", etrackerDlg.Audience(), storageNode.did)
 		}
 
 		// Verify capability
-		caps = etrackerDlg.Capabilities()
-		if len(caps) != 1 {
-			t.Fatalf("unexpected number of capabilities in egress tracker proof: got %d, want 1", len(caps))
+		cmd = etrackerDlg.Command()
+		if !cmd.Defined() {
+			t.Fatalf("etracker proof command not defined")
 		}
-		if caps[0].Can() != egress.TrackAbility {
-			t.Fatalf("unexpected capability in egress tracker proof: got %s, want %s", caps[0].Can(), egress.TrackAbility)
+		if !cmd.Proves(egress.Track.Command) {
+			t.Fatalf("unexpected capability in egress tracker proof, does not prove %s", egress.Track)
 		}
-		if caps[0].With() != egressTrackingSigner.DID().String() {
-			t.Fatalf("unexpected capability resource in indexer proof: got %s, want %s", caps[0].With(), egressTrackingSigner.DID().String())
+		if etrackerDlg.Subject() != egressTrackingSigner.DID() {
+			t.Fatal("unexpected subject in egress tracker proof")
 		}
 	})
 
@@ -663,7 +605,7 @@ func TestSystemRequestProofs(t *testing.T) {
 
 func TestSystemEndToEndWorkflow(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, _, _, _, uploadSigner, _ := setupTestServer(t, mockStore)
+	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, _, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -698,24 +640,18 @@ func TestSystemEndToEndWorkflow(t *testing.T) {
 		t.Fatal("expected request proof to fail before registration")
 	}
 
-	// Step 3: Register the node
-	proof := generateTestProof(t, storageNode.signer, uploadSigner,
-		[]string{blob.AcceptAbility, blob.AllocateAbility, replica.AllocateAbility, pdp.InfoAbility},
-		storageNode.did)
-
 	err = c.Register(ctx, &client.RegisterRequest{
 		Operator:      storageNode.did.String(),
 		OwnerAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890").String(),
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
-		Proof:         proof,
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
 	}
 
-	// Step 4: Verify node is now registered
+	// Step 3: Verify node is now registered
 	registered, err = c.IsRegistered(ctx, &client.IsRegisteredRequest{
 		DID: storageNode.did.String(),
 	})
@@ -726,33 +662,41 @@ func TestSystemEndToEndWorkflow(t *testing.T) {
 		t.Fatal("expected DID to be registered after registration")
 	}
 
-	// Step 5: Request proof after registration (should succeed)
+	// Step 4: Request proof after registration (should succeed)
 	proofResp, err := c.RequestProofs(ctx, storageNode.did.String())
 	if err != nil {
 		t.Fatalf("request proof failed: %v", err)
 	}
-	if proofResp.Proofs.Indexer == "" {
+	if proofResp.Proofs.Indexer == nil {
 		t.Fatal("expected indexer proof to be returned")
 	}
-	if proofResp.Proofs.EgressTracker == "" {
+	if proofResp.Proofs.EgressTracker == nil {
 		t.Fatal("expected egress tracker proof to be returned")
 	}
 
-	// Step 6: Verify the proofs can be parsed and are valid
-	dlg, err := delegation.Parse(proofResp.Proofs.Indexer)
+	// Step 5: Verify the proofs can be parsed and are valid
+	con, err := container.Decode(proofResp.Proofs.Indexer)
 	if err != nil {
 		t.Fatalf("failed to parse indexer proof: %v", err)
 	}
-	if dlg.Audience().DID().String() != storageNode.did.String() {
-		t.Fatalf("indexer proof audience mismatch: got %s, want %s", dlg.Audience().DID().String(), storageNode.did.String())
+	dlg := findDelegationByIssuer(t, con, delegatorSigner.DID())
+	if dlg.Audience() != storageNode.did {
+		t.Fatalf("indexer proof audience mismatch: got %s, want %s", dlg.Audience(), storageNode.did)
+	}
+	if dlg.Subject() != indexingSigner.DID() {
+		t.Fatalf("indexer proof subject mismatch: got %s, want %s", dlg.Subject(), indexingSigner.DID())
 	}
 
-	dlg, err = delegation.Parse(proofResp.Proofs.EgressTracker)
+	con, err = container.Decode(proofResp.Proofs.EgressTracker)
 	if err != nil {
 		t.Fatalf("failed to parse egress tracker proof: %v", err)
 	}
-	if dlg.Audience().DID().String() != storageNode.did.String() {
-		t.Fatalf("egress tracker proof audience mismatch: got %s, want %s", dlg.Audience().DID().String(), storageNode.did.String())
+	dlg = findDelegationByIssuer(t, con, delegatorSigner.DID())
+	if dlg.Audience() != storageNode.did {
+		t.Fatalf("egress tracker proof audience mismatch: got %s, want %s", dlg.Audience(), storageNode.did)
+	}
+	if dlg.Subject() != egressTrackingSigner.DID() {
+		t.Fatalf("egress tracker proof subject mismatch: got %s, want %s", dlg.Subject(), egressTrackingSigner.DID())
 	}
 }
 
@@ -912,12 +856,12 @@ func TestSystemRequestContractApproval(t *testing.T) {
 		mockContractOp.registerProvider(testAddress, false) // Register but not yet approved
 
 		// Sign the DID with the signer's private key to prove ownership
-		signature := signer.Sign(signer.DID().Bytes())
+		signature := signer.Sign([]byte(signer.DID().String()))
 
 		err = c.RequestApproval(ctx, &client.RequestApprovalRequest{
 			Operator:     signer.DID().String(),
 			OwnerAddress: testAddress.String(),
-			Signature:    signature.Raw(),
+			Signature:    signature,
 		})
 		if err != nil {
 			t.Fatalf("contract approval failed: %v", err)
@@ -929,12 +873,12 @@ func TestSystemRequestContractApproval(t *testing.T) {
 		signer := generateTestSigner(t)
 		testAddr := common.HexToAddress("0x2234567890123456789012345678901234567890")
 
-		signature := signer.Sign(signer.DID().Bytes())
+		signature := signer.Sign([]byte(signer.DID().String()))
 
 		err = c.RequestApproval(ctx, &client.RequestApprovalRequest{
 			Operator:     signer.DID().String(),
 			OwnerAddress: testAddr.String(),
-			Signature:    signature.Raw(),
+			Signature:    signature,
 		})
 		if err == nil {
 			t.Fatal("expected contract approval to fail for DID not in allow list")
@@ -968,12 +912,12 @@ func TestSystemRequestContractApproval(t *testing.T) {
 		testAddr := common.HexToAddress("0x4234567890123456789012345678901234567890")
 		// Do NOT register with contract
 
-		signature := signer.Sign(signer.DID().Bytes())
+		signature := signer.Sign([]byte(signer.DID().String()))
 
 		err = c.RequestApproval(ctx, &client.RequestApprovalRequest{
 			Operator:     signer.DID().String(),
 			OwnerAddress: testAddr.String(),
-			Signature:    signature.Raw(),
+			Signature:    signature,
 		})
 		if err == nil {
 			t.Fatal("expected contract approval to fail for provider not registered with contract")
@@ -987,13 +931,13 @@ func TestSystemRequestContractApproval(t *testing.T) {
 		testAddr := common.HexToAddress("0x5234567890123456789012345678901234567890")
 		mockContractOp.registerProvider(testAddr, true) // Already approved
 
-		signature := signer.Sign(signer.DID().Bytes())
+		signature := signer.Sign([]byte(signer.DID().String()))
 
 		// Should succeed even if already approved (idempotent behavior)
 		err = c.RequestApproval(ctx, &client.RequestApprovalRequest{
 			Operator:     signer.DID().String(),
 			OwnerAddress: testAddr.String(),
-			Signature:    signature.Raw(),
+			Signature:    signature,
 		})
 		if err != nil {
 			t.Fatalf("contract approval failed for already approved provider: %v", err)
