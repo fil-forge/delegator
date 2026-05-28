@@ -47,7 +47,7 @@ func init() {
 	GenCmd.Flags().StringVarP(&command, "command", "c", "", "command issuer will authorize to audience")
 	cobra.CheckErr(GenCmd.MarkFlagRequired("command"))
 
-	GenCmd.Flags().Int64VarP(&expiration, "expiration", "e", 0, "expiration time in UTC seconds since Unix\n// epoch")
+	GenCmd.Flags().Int64VarP(&expiration, "expiration", "e", 0, "expiration time in UTC seconds since Unix epoch")
 }
 
 func mkDelegation(cmd *cobra.Command, _ []string) error {
