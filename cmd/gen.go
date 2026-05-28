@@ -39,7 +39,7 @@ func init() {
 	GenCmd.Flags().StringVarP(&issuerPrivateKeyFile, "issuer-private-key-file", "f", "", "Path to PEM encoded Ed25519 private key of delegation issuer")
 	cobra.CheckErr(GenCmd.MarkFlagRequired("issuer-private-key-file"))
 
-	GenCmd.Flags().StringVarP(&issuerDidWebKey, "issuer-did-web", "i", "", "Optional did:web: of issuer, when provided warps did:key: of delegation issuer")
+	GenCmd.Flags().StringVarP(&issuerDidWebKey, "issuer-did-web", "i", "", "Optional did:web: of issuer, when provided wraps did:key: of delegation issuer")
 
 	GenCmd.Flags().StringVarP(&audienceDidKey, "audience-did-key", "a", "", "did:key of delegation audience")
 	cobra.CheckErr(GenCmd.MarkFlagRequired("audience-did-key"))
