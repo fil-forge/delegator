@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.49.1
 	github.com/ethereum/go-ethereum v1.16.7
 	github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2
-	github.com/fil-forge/libforge v0.0.0-20260521215559-0f7fa19c9ebc
+	github.com/fil-forge/libforge v0.0.0-20260527183922-707e595359d9
 	github.com/fil-forge/ucantone v0.0.0-20260522152152-eda937bc2684
 	github.com/ipfs/go-log/v2 v2.9.1
 	github.com/labstack/echo/v4 v4.13.4

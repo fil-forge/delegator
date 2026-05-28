@@ -85,14 +85,22 @@ func mkDelegation(cmd *cobra.Command, _ []string) error {
 		opts = append(opts, delegation.WithNoExpiration())
 	}
 
+	// Subject must be the issuer's own DID — the issuer is delegating
+	// authority over its own resources to the audience. Using `audience`
+	// here produces a delegation whose subject is the delegator (not the
+	// indexer/etracker), which fails downstream chain validation with
+	// "delegation subject is X not Y" when piri later uses this as a
+	// proof for invoking against the indexing/egress-tracker service.
+	subject := issuer.DID()
+
 	var d ucan.Delegation
 	if command == claim.Cache.Command.String() {
-		d, err = claim.Cache.Delegate(issuer, audience, audience, opts...)
+		d, err = claim.Cache.Delegate(issuer, audience, subject, opts...)
 		if err != nil {
 			return fmt.Errorf("creating delegation: %w", err)
 		}
 	} else if command == egress.Track.Command.String() {
-		d, err = egress.Track.Delegate(issuer, audience, audience, opts...)
+		d, err = egress.Track.Delegate(issuer, audience, subject, opts...)
 		if err != nil {
 			return fmt.Errorf("creating delegation: %w", err)
 		}

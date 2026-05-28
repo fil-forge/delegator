@@ -99,8 +99,8 @@ github.com/fil-forge/filecoin-services/go v0.0.0-20260507172456-36ebe4467390 h1:
 github.com/fil-forge/filecoin-services/go v0.0.0-20260507172456-36ebe4467390/go.mod h1:ur5fRrG8v9twwwRFdX7lquGza4liT6x/xAFW7T4XVIc=
 github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2 h1:bmpfrIGcHiqcCCC5U69wRc4+ycraP0DPmw+Vdk6feR4=
 github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2/go.mod h1:r3mJDZrMIpgURUjXuD+bb+V8NCUjLQJLCAUsuJo6N2I=
-github.com/fil-forge/libforge v0.0.0-20260521215559-0f7fa19c9ebc h1:/F8zCG3cINBscp5BTRms8kF+ysKxPd7PODQ52AqK+5g=
-github.com/fil-forge/libforge v0.0.0-20260521215559-0f7fa19c9ebc/go.mod h1:mw0OzGZhVtcXwE4/KhgEV5kIQSTY0ly9HyZZtlqm7yA=
+github.com/fil-forge/libforge v0.0.0-20260527183922-707e595359d9 h1:59hwUw4frLUByPTXBnBI4G7nxYxib9A08azwjEXYbQo=
+github.com/fil-forge/libforge v0.0.0-20260527183922-707e595359d9/go.mod h1:1ytnrneNEeJcskEbsRDtNZY/Jvgo2Yw5szIUI/9EWPk=
 github.com/fil-forge/ucantone v0.0.0-20260522152152-eda937bc2684 h1:kWJLKVltJXPXO7tKS1z0GhzA+c59gwhediGyByEXE0o=
 github.com/fil-forge/ucantone v0.0.0-20260522152152-eda937bc2684/go.mod h1:XAVqsZwYoZ9vncjZoRUAJ+mL/ApLMFn9HHX7ipohVdY=
 github.com/filecoin-project/go-state-types v0.18.0 h1:oDcjihXRlf2cM176atZzllp79Zc+kcbiuQM9DPL/1a4=
