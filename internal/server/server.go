@@ -44,8 +44,6 @@ func (s *Server) setupRoutes() {
 	s.echo.GET("/registrar/request-proof", s.handlers.RequestProof) // TODO: deprecated, remove when nobody uses it
 	s.echo.GET("/registrar/request-proofs", s.handlers.RequestProofs)
 	s.echo.GET("/registrar/is-registered", s.handlers.IsRegistered)
-	s.echo.POST("/benchmark/upload", s.handlers.BenchmarkUpload)
-	s.echo.POST("/benchmark/download", s.handlers.BenchmarkDownload)
 }
 
 func Start(lc fx.Lifecycle, s *Server) {

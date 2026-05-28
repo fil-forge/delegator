@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"github.com/fil-forge/delegator/internal/services/benchmark"
-	"github.com/fil-forge/delegator/internal/services/registrar"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -11,6 +9,7 @@ import (
 	"github.com/fil-forge/delegator/internal/handlers"
 	"github.com/fil-forge/delegator/internal/providers"
 	"github.com/fil-forge/delegator/internal/server"
+	"github.com/fil-forge/delegator/internal/services/registrar"
 	"github.com/fil-forge/delegator/internal/store"
 )
 
@@ -44,7 +43,6 @@ var ServeCmd = &cobra.Command{
 
 				// Service
 				registrar.New,
-				benchmark.New,
 
 				// Handlers and Server
 				handlers.NewHandlers,

@@ -12,20 +12,18 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/fil-forge/forgectl/pkg/services/types"
-	"github.com/fil-forge/go-libstoracha/capabilities/blob"
-	"github.com/fil-forge/go-libstoracha/capabilities/blob/replica"
-	"github.com/fil-forge/go-libstoracha/capabilities/claim"
-	"github.com/fil-forge/go-libstoracha/capabilities/pdp"
-	"github.com/fil-forge/go-libstoracha/capabilities/space/egress"
-	"github.com/fil-forge/go-ucanto/core/delegation"
-	"github.com/fil-forge/go-ucanto/did"
-	"github.com/fil-forge/go-ucanto/principal"
-	"github.com/fil-forge/go-ucanto/principal/ed25519/verifier"
-	"github.com/fil-forge/go-ucanto/ucan"
-	"github.com/fil-forge/go-ucanto/ucan/crypto/signature"
 	logging "github.com/ipfs/go-log/v2"
 	"go.uber.org/fx"
+
+	"github.com/fil-forge/forgectl/pkg/services/types"
+	"github.com/fil-forge/libforge/commands/claim"
+	"github.com/fil-forge/libforge/commands/space/egress"
+	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/principal"
+	"github.com/fil-forge/ucantone/principal/ed25519/verifier"
+	"github.com/fil-forge/ucantone/ucan"
+	"github.com/fil-forge/ucantone/ucan/container"
+	"github.com/fil-forge/ucantone/ucan/delegation"
 
 	"github.com/fil-forge/delegator/internal/store"
 )
@@ -55,10 +53,10 @@ type Service struct {
 	signer principal.Signer
 
 	indexingServiceWebDID did.DID
-	indexingServiceProof  delegation.Delegation
+	indexingServiceProof  ucan.Delegation
 
 	egressTrackingServiceDID   did.DID
-	egressTrackingServiceProof delegation.Delegation
+	egressTrackingServiceProof ucan.Delegation
 
 	uploadServiceDID did.DID
 
@@ -77,12 +75,12 @@ type ServiceParams struct {
 	// the web did of the indexing service (TODO is this still required after ./well-known change?
 	IndexingServiceWebDID did.DID `name:"indexing_service_web_did"`
 	// proof from the indexer, delegated to this delegator, allowing it to create delegations on behalf of indexing service
-	IndexingServiceProof delegation.Delegation `name:"indexing_service_proof"`
+	IndexingServiceProof ucan.Delegation `name:"indexing_service_proof"`
 
 	// the did of the egress tracking service
 	EgressTrackingServiceDID did.DID `name:"egress_tracking_service_did"`
 	// proof from the egress tracking service, delegated to this delegator
-	EgressTrackingServiceProof delegation.Delegation `name:"egress_tracking_service_proof"`
+	EgressTrackingServiceProof ucan.Delegation `name:"egress_tracking_service_proof"`
 
 	// the did of the upload service, used for validating operator proofs are correct
 	UploadServiceDID did.DID `name:"upload_service_did"`
@@ -109,7 +107,6 @@ type RegisterParams struct {
 	ProofSetID    uint64
 	OperatorEmail string
 	PublicURL     url.URL
-	Proof         string
 }
 
 func (s *Service) Register(ctx context.Context, req RegisterParams) error {
@@ -141,12 +138,6 @@ func (s *Service) Register(ctx context.Context, req RegisterParams) error {
 		return ErrBadEndpoint
 	}
 
-	// ensure the proof they provided, allowing the upload service to write to their node, is valid
-	if err := s.assertProofValid(req.Proof, req.DID); err != nil {
-		log.Errorw("failed to validate proof", "error", err)
-		return ErrInvalidProof
-	}
-
 	// if we reach here, they have a valid unregistered did in the allow list, with a domain service the did, and valid proof
 	// so we can create the provider record now.
 	now := time.Now()
@@ -156,7 +147,6 @@ func (s *Service) Register(ctx context.Context, req RegisterParams) error {
 		Address:       req.OwnerAddress.String(),
 		ProofSet:      req.ProofSetID,
 		OperatorEmail: req.OperatorEmail,
-		Proof:         req.Proof,
 		InsertedAt:    now,
 		UpdatedAt:     now,
 	}); err != nil {
@@ -176,7 +166,7 @@ func (s *Service) IsRegisteredDID(ctx context.Context, operator did.DID) (bool, 
 	return registered, nil
 }
 
-func (s *Service) RequestProofs(ctx context.Context, operator did.DID) (delegation.Delegation, delegation.Delegation, error) {
+func (s *Service) RequestProofs(ctx context.Context, operator did.DID) (ucan.Container, ucan.Container, error) {
 	// ensure they are allowed to register
 	allowed, err := s.store.IsAllowedDID(ctx, operator)
 	if err != nil {
@@ -210,95 +200,46 @@ func (s *Service) RequestProofs(ctx context.Context, operator did.DID) (delegati
 	return indexerProof, egressTrackerProof, nil
 }
 
-// generateIndexerDelegation generates a delegation for the storage node to interact with the indexing service
-func (s *Service) generateIndexerDelegation(id did.DID) (delegation.Delegation, error) {
-	// the delegator creates a delegation for the storage node to invoke claim/cache w/ proof from indexer.
-	indxToStrgDelegation, err := delegation.Delegate(
+// generateIndexerDelegation mints the next hop on the chain rooted at
+// s.indexingServiceProof (indexing → delegator), extending it to the storage
+// node. Subject stays as the indexing service so the chain resolves at
+// invocation time: indexing → delegator → storage node. The returned container
+// carries both delegations so the node can pass them as proofs when it later
+// invokes /claim/cache.
+func (s *Service) generateIndexerDelegation(id did.DID) (ucan.Container, error) {
+	isd, err := claim.Cache.Delegate(
 		s.signer,
 		id,
-		[]ucan.Capability[ucan.NoCaveats]{
-			ucan.NewCapability(
-				claim.CacheAbility,
-				s.indexingServiceWebDID.String(),
-				ucan.NoCaveats{},
-			),
-		},
+		s.indexingServiceWebDID,
 		delegation.WithNoExpiration(),
-		delegation.WithProof(delegation.FromDelegation(s.indexingServiceProof)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate delegation from indexing service to storage node: %w", err)
 	}
-
-	return indxToStrgDelegation, nil
+	return container.New(
+		container.WithDelegations(s.indexingServiceProof, isd),
+	), nil
 }
 
-// generateEgressTrackerDelegation generates a delegation for the provider to interact with the egress tracking service
-func (s *Service) generateEgressTrackerDelegation(id did.DID) (delegation.Delegation, error) {
-	// Create a delegation for the storage node to interact with the egress tracking service
-	egressTrackerDelegation, err := delegation.Delegate(
+// generateEgressTrackerDelegation mints the next hop on the chain rooted at
+// s.egressTrackingServiceProof (egress → delegator), extending it to the
+// storage node. Subject stays as the egress tracking service so the chain
+// resolves at invocation time: egress → delegator → storage node. The returned
+// container carries both delegations so the node can pass them as proofs when
+// it later invokes /space/egress/track.
+func (s *Service) generateEgressTrackerDelegation(id did.DID) (ucan.Container, error) {
+	etd, err := egress.Track.Delegate(
 		s.signer,
 		id,
-		[]ucan.Capability[ucan.NoCaveats]{
-			ucan.NewCapability(
-				egress.TrackAbility,
-				s.egressTrackingServiceDID.String(),
-				ucan.NoCaveats{},
-			),
-		},
+		s.egressTrackingServiceDID,
 		delegation.WithNoExpiration(),
-		delegation.WithProof(delegation.FromDelegation(s.egressTrackingServiceProof)),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate delegation from egress tracking service to storage node: %w", err)
 	}
-
-	return egressTrackerDelegation, nil
-}
-
-func (s *Service) assertProofValid(proofString string, operator did.DID) error {
-	if strings.TrimSpace(proofString) == "" {
-		return fmt.Errorf("proof cannot be empty")
-	}
-
-	proof, err := delegation.Parse(proofString)
-	if err != nil {
-		return err
-	}
-	expiration := proof.Expiration()
-
-	now := time.Now().Unix()
-	if expiration != nil {
-		if *expiration != 0 && *expiration <= int(now) {
-			return fmt.Errorf("delegation expired. expiration: %d, now: %d", expiration, now)
-		}
-	}
-	if proof.Issuer().DID().String() != operator.String() {
-		return fmt.Errorf("delegation issuer (%s) does not match operator DID (%s)", proof.Issuer().DID().String(), operator)
-	}
-	if proof.Audience().DID().String() != s.uploadServiceDID.DID().String() {
-		return fmt.Errorf("delegation audience (%s) does not match upload service DID (%s)", proof.Audience().DID().String(), s.uploadServiceDID.DID())
-	}
-	var expectedCapabilities = map[string]struct{}{
-		blob.AcceptAbility:      {},
-		blob.AllocateAbility:    {},
-		replica.AllocateAbility: {},
-		pdp.InfoAbility:         {},
-	}
-	if len(proof.Capabilities()) != len(expectedCapabilities) {
-		return fmt.Errorf("expected exact %v capabilities, got %v", expectedCapabilities, proof.Capabilities())
-	}
-	for _, c := range proof.Capabilities() {
-		_, ok := expectedCapabilities[c.Can()]
-		if !ok {
-			return fmt.Errorf("unexpected capability: %s", c.Can())
-		}
-		if c.With() != operator.String() {
-			return fmt.Errorf("capability %s has unexpected resource %s, expected: %s", c.Can(), c.With(), operator)
-		}
-	}
-
-	return nil
+	return container.New(
+		container.WithDelegations(s.egressTrackingServiceProof, etd),
+	), nil
 }
 
 func assertEndpointServesDID(ctx context.Context, endpoint url.URL, expectedDID did.DID) (bool, error) {
@@ -430,7 +371,7 @@ func (s *Service) RequestContractApproval(ctx context.Context, req RequestApprov
 		return ErrInvalidDID
 	}
 	// providers sign their own DID with its private key, here we verify the signature.
-	if !v.Verify(req.Operator.Bytes(), signature.NewSignature(signature.EdDSA, req.Signature)) {
+	if !v.Verify([]byte(req.Operator.String()), req.Signature) {
 		// logging since this may represent someone doing something nasty!
 		log.Errorw("failed to verify DID", "DID", req.Operator, "signature", req.Signature)
 		return ErrInvalidSignature

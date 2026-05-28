@@ -27,6 +27,7 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.delegator.yaml)")
 	RootCmd.AddCommand(ServeCmd)
 	RootCmd.AddCommand(StoreCmd)
+	RootCmd.AddCommand(GenCmd)
 }
 
 func initConfig() {

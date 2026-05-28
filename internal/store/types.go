@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/fil-forge/go-ucanto/did"
+	"github.com/fil-forge/ucantone/did"
 )
 
 // StorageProviderInfo represents the provider metadata table
@@ -19,8 +19,6 @@ type StorageProviderInfo struct {
 	ProofSet uint64 `json:"proof_set" db:"proof_set"`
 	// OperatorEmail is the email address of the storage nodes operator.
 	OperatorEmail string `json:"operator_email" db:"operator_email"`
-	// Proof is a delegation allowing the upload service to send invocations to the storage node.
-	Proof string `json:"proof" db:"proof"`
 	// InsertedAt is the time this record was created.
 	InsertedAt time.Time `json:"inserted_at" db:"inserted_at"`
 	// UpdatedAt is the time this record was last modified.

@@ -113,59 +113,6 @@ Request a delegation proof for a registered provider to interact with the indexi
 
 The returned proof grants the provider the `claim/cache` capability for the indexing service.
 
-### Benchmarking
-
-#### `POST /benchmark/upload`
-Perform an upload benchmark test against a storage provider node.
-
-**Request Body:**
-```json
-{
-  "operator_did": "did:key:z6MksvRCPWoXvMj8sUzuHiQ4pFkSawkKRz2eh1TALNEG6s3e",
-  "operator_endpoint": "https://storage.example.com",
-  "operator_proof": "<base64-encoded-delegation-proof>",
-  "size": 1048576
-}
-```
-
-**Validation:**
-- Proof must delegate capabilities to the delegator service (not upload service)
-- Size must be greater than 0
-
-**Response:**
-- `200 OK` - Benchmark completed successfully
-```json
-{
-  "allocate_duration": "100ms",
-  "upload_duration": "500ms", 
-  "accept_duration": "200ms",
-  "download_url": "https://storage.example.com/download/abc123",
-  "piece_link": "baga6ea4seaqtest"
-}
-```
-- `400 Bad Request` - Invalid parameters
-- `500 Internal Server Error` - Benchmark execution failed
-
-#### `POST /benchmark/download`
-Perform a download benchmark test from a storage endpoint.
-
-**Request Body:**
-```json
-{
-  "endpoint": "https://storage.example.com/download/abc123"
-}
-```
-
-**Response:**
-- `200 OK` - Download benchmark completed
-```json
-{
-  "download_duration": "250ms"
-}
-```
-- `400 Bad Request` - Invalid URL
-- `500 Internal Server Error` - Download failed
-
 ## Client Library
 
 A Go client library is provided in the `client/` package for interacting with the delegator service:
@@ -223,7 +170,6 @@ The comprehensive system test suite in `test/system_test.go` covers:
 # Test specific functionality
 go test -v ./test/... -run TestSystemRegistrationFlow
 go test -v ./test/... -run TestSystemRequestProof
-go test -v ./test/... -run TestSystemBenchmark
 ```
 
 ### Test Coverage

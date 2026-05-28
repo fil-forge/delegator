@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/fil-forge/go-ucanto/did"
+	"github.com/fil-forge/ucantone/did"
 	logging "github.com/ipfs/go-log/v2"
 
 	"github.com/fil-forge/delegator/internal/config"
@@ -270,10 +270,6 @@ func (d *DynamoDB) RegisterProvider(ctx context.Context, info StorageProviderInf
 
 	if info.OperatorEmail != "" {
 		item["operatorEmail"] = &types.AttributeValueMemberS{Value: info.OperatorEmail}
-	}
-
-	if info.Proof != "" {
-		item["proof"] = &types.AttributeValueMemberS{Value: info.Proof}
 	}
 
 	// Format timestamps as strings

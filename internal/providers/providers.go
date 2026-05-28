@@ -2,30 +2,29 @@ package providers
 
 import (
 	"context"
-	crypto_ed25519 "crypto/ed25519"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
 	"os"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/fil-forge/delegator/internal/services/registrar"
+	"github.com/fil-forge/libforge/identity"
+	"github.com/fil-forge/ucantone/ucan"
+	"go.uber.org/fx"
+
 	"github.com/fil-forge/forgectl/pkg/services/chain"
 	"github.com/fil-forge/forgectl/pkg/services/inspector"
 	"github.com/fil-forge/forgectl/pkg/services/operator"
 	"github.com/fil-forge/forgectl/pkg/services/types"
-	"github.com/fil-forge/go-ucanto/core/delegation"
-	"github.com/fil-forge/go-ucanto/did"
-	"github.com/fil-forge/go-ucanto/principal"
-	ed25519 "github.com/fil-forge/go-ucanto/principal/ed25519/signer"
-	"github.com/fil-forge/go-ucanto/principal/signer"
-	"go.uber.org/fx"
+	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/principal"
+	"github.com/fil-forge/ucantone/principal/ed25519"
+	"github.com/fil-forge/ucantone/principal/signer"
+	"github.com/fil-forge/ucantone/ucan/delegation"
 
 	"github.com/fil-forge/delegator/internal/config"
+	"github.com/fil-forge/delegator/internal/services/registrar"
 )
 
 type SignerParams struct {
@@ -80,39 +79,7 @@ func signerFromEd25519PEMFile(path string) (principal.Signer, error) {
 		return nil, fmt.Errorf("reading private key: %w", err)
 	}
 
-	var privateKey *crypto_ed25519.PrivateKey
-	rest := pemData
-
-	// Loop until no more blocks
-	for {
-		block, remaining := pem.Decode(rest)
-		if block == nil {
-			// No more PEM blocks
-			break
-		}
-		rest = remaining
-
-		// Look for "PRIVATE KEY"
-		if block.Type == "PRIVATE KEY" {
-			parsedKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse PKCS#8 private key: %w", err)
-			}
-
-			// We expect a ed25519 private key, cast it
-			key, ok := parsedKey.(crypto_ed25519.PrivateKey)
-			if !ok {
-				return nil, fmt.Errorf("the parsed key is not an ED25519 private key")
-			}
-			privateKey = &key
-			break
-		}
-	}
-
-	if privateKey == nil {
-		return nil, fmt.Errorf("could not find a PRIVATE KEY block in the PEM file")
-	}
-	return ed25519.FromRaw(*privateKey)
+	return identity.DecodeEd25519SignerFromPEM(pemData)
 }
 
 type IndexingServiceWebDIDParams struct {
@@ -160,11 +127,11 @@ type IndexingServiceProofParams struct {
 
 type IndexingServiceProofResult struct {
 	fx.Out
-	IndexingServiceProof delegation.Delegation `name:"indexing_service_proof"`
+	IndexingServiceProof ucan.Delegation `name:"indexing_service_proof"`
 }
 
 func ProvideIndexingServiceProof(params IndexingServiceProofParams) (IndexingServiceProofResult, error) {
-	var proofStr string
+	var proofStr []byte
 
 	// Prefer proof file over inline proof string
 	if params.Config.Delegator.IndexingServiceProofFile != "" {
@@ -172,12 +139,13 @@ func ProvideIndexingServiceProof(params IndexingServiceProofParams) (IndexingSer
 		if err != nil {
 			return IndexingServiceProofResult{}, fmt.Errorf("failed to read indexing service proof file: %w", err)
 		}
-		proofStr = strings.TrimSpace(string(data))
+		proofStr = data
 	} else {
-		proofStr = params.Config.Delegator.IndexingServiceProof
+		panic("indexing service proof file must be provided")
+		//proofStr = params.Config.Delegator.IndexingServiceProof
 	}
 
-	proof, err := delegation.Parse(proofStr)
+	proof, err := delegation.Decode(proofStr)
 	if err != nil {
 		return IndexingServiceProofResult{}, fmt.Errorf("failed to parse indexing service proof: %w", err)
 	}
@@ -211,11 +179,11 @@ type EgressTrackingServiceProofParams struct {
 
 type EgressTrackingServiceProofResult struct {
 	fx.Out
-	EgressTrackingServiceProof delegation.Delegation `name:"egress_tracking_service_proof"`
+	EgressTrackingServiceProof ucan.Delegation `name:"egress_tracking_service_proof"`
 }
 
 func ProvideEgressTrackingServiceProof(params EgressTrackingServiceProofParams) (EgressTrackingServiceProofResult, error) {
-	var proofStr string
+	var proofStr []byte
 
 	// Prefer proof file over inline proof string
 	if params.Config.Delegator.EgressTrackingServiceProofFile != "" {
@@ -223,12 +191,13 @@ func ProvideEgressTrackingServiceProof(params EgressTrackingServiceProofParams) 
 		if err != nil {
 			return EgressTrackingServiceProofResult{}, fmt.Errorf("failed to read egress tracking service proof file: %w", err)
 		}
-		proofStr = strings.TrimSpace(string(data))
+		proofStr = data
 	} else {
-		proofStr = params.Config.Delegator.EgressTrackingServiceProof
+		panic("egress tracking service proof file must be provided")
+		//proofStr = params.Config.Delegator.EgressTrackingServiceProof
 	}
 
-	proof, err := delegation.Parse(proofStr)
+	proof, err := delegation.Decode(proofStr)
 	if err != nil {
 		return EgressTrackingServiceProofResult{}, fmt.Errorf("failed to parse egress tracking service proof: %w", err)
 	}
