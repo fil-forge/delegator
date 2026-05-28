@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -120,12 +119,7 @@ func mkDelegation(cmd *cobra.Command, _ []string) error {
 // parseIssuerKey attempts to read and parse the private key from the
 // provided path.
 func parseIssuerKey(path string) (principal.Signer, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("opening file: %w", err)
-	}
-	defer f.Close()
-	data, err := io.ReadAll(f)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading file: %w", err)
 	}
