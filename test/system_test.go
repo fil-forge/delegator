@@ -18,7 +18,10 @@ import (
 	"go.uber.org/fx/fxtest"
 
 	forgetypes "github.com/fil-forge/forgectl/pkg/services/types"
+	blobcmds "github.com/fil-forge/libforge/commands/blob"
+	replicacmds "github.com/fil-forge/libforge/commands/blob/replica"
 	"github.com/fil-forge/libforge/commands/claim"
+	pdpcmds "github.com/fil-forge/libforge/commands/pdp"
 	"github.com/fil-forge/libforge/commands/space/egress"
 	"github.com/fil-forge/ucantone/did"
 	"github.com/fil-forge/ucantone/principal"
@@ -128,6 +131,33 @@ func generateEgressTrackingProof(t *testing.T, egressTrackingSigner, delegatorSi
 		t.Fatalf("failed to create indexing proof: %v", err)
 	}
 	return dlg
+}
+
+// providerProofs builds the container a registering provider must supply: the
+// provider delegates the required capabilities to the upload service. It is
+// returned as a container.Base64Gzip-encoded string, as the register request
+// expects.
+func providerProofs(t *testing.T, provider principal.Signer, uploadServiceDID did.DID) string {
+	t.Helper()
+	cmds := []ucan.Command{
+		blobcmds.Allocate.Command,
+		blobcmds.Accept.Command,
+		replicacmds.Allocate.Command,
+		pdpcmds.Info.Command,
+	}
+	dlgs := make([]ucan.Delegation, 0, len(cmds))
+	for _, cmd := range cmds {
+		dlg, err := delegation.Delegate(provider, uploadServiceDID, provider.DID(), cmd, delegation.WithNoExpiration())
+		if err != nil {
+			t.Fatalf("failed to create %s delegation: %v", cmd, err)
+		}
+		dlgs = append(dlgs, dlg)
+	}
+	proofs, err := container.Encode(container.Base64Gzip, container.New(container.WithDelegations(dlgs...)))
+	if err != nil {
+		t.Fatalf("failed to encode provider proofs: %v", err)
+	}
+	return string(proofs)
 }
 
 // findDelegationByIssuer returns the first delegation in ct whose issuer matches
@@ -353,7 +383,7 @@ func TestSystemDIDDocument(t *testing.T) {
 
 func TestSystemRegistrationFlow(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, _, _, _, _, _ := setupTestServer(t, mockStore)
+	app, serverURL, _, _, _, uploadSigner, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -377,6 +407,7 @@ func TestSystemRegistrationFlow(t *testing.T) {
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     storageNode.url(),
+			Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
 		})
 		if err != nil {
 			t.Fatalf("registration failed: %v", err)
@@ -390,6 +421,9 @@ func TestSystemRegistrationFlow(t *testing.T) {
 		if provider.Provider != storageNode.did.String() {
 			t.Fatalf("unexpected provider DID: got %s, want %s", provider.Provider, storageNode.did.String())
 		}
+		if provider.Proofs == "" {
+			t.Fatal("expected provider proofs to be stored")
+		}
 	})
 
 	t.Run("duplicate registration should fail", func(t *testing.T) {
@@ -399,6 +433,7 @@ func TestSystemRegistrationFlow(t *testing.T) {
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     storageNode.url(),
+			Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
 		})
 		if err == nil {
 			t.Fatal("expected duplicate registration to fail")
@@ -416,16 +451,35 @@ func TestSystemRegistrationFlow(t *testing.T) {
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     unauthorizedNode.url(),
+			Proofs:        providerProofs(t, unauthorizedSigner, uploadSigner.DID()),
 		})
 		if err == nil {
 			t.Fatal("expected unauthorized registration to fail")
+		}
+	})
+
+	t.Run("missing proofs registration should fail", func(t *testing.T) {
+		missingProofsNode := newMockStorageNode(t)
+		defer missingProofsNode.close()
+		mockStore.allowDID(missingProofsNode.did)
+
+		err = c.Register(t.Context(), &client.RegisterRequest{
+			Operator:      missingProofsNode.did.String(),
+			OwnerAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890").String(),
+			ProofSetID:    1,
+			OperatorEmail: "test@example.com",
+			PublicURL:     missingProofsNode.url(),
+			// Proofs intentionally omitted.
+		})
+		if err == nil {
+			t.Fatal("expected registration without proofs to fail")
 		}
 	})
 }
 
 func TestSystemIsRegistered(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, _, _, _, _, _ := setupTestServer(t, mockStore)
+	app, serverURL, _, _, _, uploadSigner, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -448,6 +502,7 @@ func TestSystemIsRegistered(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
+		Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -481,7 +536,7 @@ func TestSystemIsRegistered(t *testing.T) {
 
 func TestSystemRequestProofs(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, _, _ := setupTestServer(t, mockStore)
+	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, uploadSigner, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -504,6 +559,7 @@ func TestSystemRequestProofs(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
+		Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -605,7 +661,7 @@ func TestSystemRequestProofs(t *testing.T) {
 
 func TestSystemEndToEndWorkflow(t *testing.T) {
 	mockStore := newMockStore()
-	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, _, _ := setupTestServer(t, mockStore)
+	app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, uploadSigner, _ := setupTestServer(t, mockStore)
 	defer app.RequireStop()
 
 	// Create client
@@ -646,6 +702,7 @@ func TestSystemEndToEndWorkflow(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
+		Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)

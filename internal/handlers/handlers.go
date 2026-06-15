@@ -91,6 +91,9 @@ type RegisterRequest struct {
 	ProofSetID    uint64 `json:"proof_set_id"`
 	OperatorEmail string `json:"operator_email"`
 	PublicURL     string `json:"public_url"`
+	// Proofs is a UCAN container delegating the upload service the capabilities
+	// required of a storage provider.
+	Proofs string `json:"proofs"`
 }
 
 func (h *Handlers) Register(c echo.Context) error {
@@ -111,6 +114,10 @@ func (h *Handlers) Register(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid public URL"})
 	}
+	proofs, err := container.Decode([]byte(req.Proofs))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid proofs"})
+	}
 
 	if err := h.service.Register(c.Request().Context(), registrar.RegisterParams{
 		DID:           operator,
@@ -118,6 +125,7 @@ func (h *Handlers) Register(c echo.Context) error {
 		ProofSetID:    req.ProofSetID,
 		OperatorEmail: req.OperatorEmail,
 		PublicURL:     *endpoint,
+		Proofs:        proofs,
 	}); err != nil {
 		var status int
 		var message string

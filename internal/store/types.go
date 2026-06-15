@@ -19,6 +19,9 @@ type StorageProviderInfo struct {
 	ProofSet uint64 `json:"proof_set" db:"proof_set"`
 	// OperatorEmail is the email address of the storage nodes operator.
 	OperatorEmail string `json:"operator_email" db:"operator_email"`
+	// Proofs is a UCAN container delegating the upload service the capabilities
+	// required of this provider.
+	Proofs string `json:"proofs" db:"proofs"`
 	// InsertedAt is the time this record was created.
 	InsertedAt time.Time `json:"inserted_at" db:"inserted_at"`
 	// UpdatedAt is the time this record was last modified.
