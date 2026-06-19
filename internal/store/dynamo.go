@@ -118,7 +118,7 @@ func (d *DynamoDB) initialize(ctx context.Context, cfg config.DynamoConfig) erro
 			// - address (string)
 			// - proofSet (number)
 			// - operatorEmail (string)
-			// - proof (string)
+			// - proofs (string)
 			// - insertedAt (timestamp)
 			// - updatedAt (timestamp)
 		},
@@ -271,6 +271,11 @@ func (d *DynamoDB) RegisterProvider(ctx context.Context, info StorageProviderInf
 	if info.OperatorEmail != "" {
 		item["operatorEmail"] = &types.AttributeValueMemberS{Value: info.OperatorEmail}
 	}
+
+	if info.Proofs == "" {
+		return fmt.Errorf("proofs must be provided")
+	}
+	item["proofs"] = &types.AttributeValueMemberS{Value: info.Proofs}
 
 	// Format timestamps as strings
 	item["insertedAt"] = &types.AttributeValueMemberS{Value: info.InsertedAt.Format(time.RFC3339)}

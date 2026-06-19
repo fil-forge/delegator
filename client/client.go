@@ -77,6 +77,10 @@ type RegisterRequest struct {
 	ProofSetID    uint64 `json:"proof_set_id"`
 	OperatorEmail string `json:"operator_email"`
 	PublicURL     string `json:"public_url"`
+	// Proofs is a UCAN container with delegations to upload service for
+	// `/blob/allocate`, `/blob/accept`, `/blob/replica/allocate` and `/pdp/info`
+	// capabilities on the registering provider.
+	Proofs string `json:"proofs"`
 }
 
 func (c *Client) Register(ctx context.Context, req *RegisterRequest) error {

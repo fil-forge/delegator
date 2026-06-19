@@ -16,8 +16,12 @@ import (
 	"go.uber.org/fx"
 
 	"github.com/fil-forge/forgectl/pkg/services/types"
+	blobcmds "github.com/fil-forge/libforge/commands/blob"
+	replicacmds "github.com/fil-forge/libforge/commands/blob/replica"
 	"github.com/fil-forge/libforge/commands/claim"
+	pdpcmds "github.com/fil-forge/libforge/commands/pdp"
 	"github.com/fil-forge/libforge/commands/space/egress"
+	ucanlib "github.com/fil-forge/libforge/ucan"
 	"github.com/fil-forge/ucantone/did"
 	"github.com/fil-forge/ucantone/principal"
 	"github.com/fil-forge/ucantone/principal/ed25519/verifier"
@@ -101,12 +105,24 @@ func New(p ServiceParams) *Service {
 	}
 }
 
+// requiredProofs are the capabilities a registering provider must delegate to
+// the upload service, identified by command.
+var requiredProofs = []ucan.Command{
+	blobcmds.Allocate.Command,
+	blobcmds.Accept.Command,
+	replicacmds.Allocate.Command,
+	pdpcmds.Info.Command,
+}
+
 type RegisterParams struct {
 	DID           did.DID
 	OwnerAddress  common.Address
 	ProofSetID    uint64
 	OperatorEmail string
 	PublicURL     url.URL
+	// Proofs delegates the upload service the capabilities in requiredProofs on
+	// the registering provider (DID).
+	Proofs ucan.Container
 }
 
 func (s *Service) Register(ctx context.Context, req RegisterParams) error {
@@ -130,12 +146,30 @@ func (s *Service) Register(ctx context.Context, req RegisterParams) error {
 		return ErrDIDAlreadyRegistered
 	}
 
+	// ensure the proofs delegate every required capability from the provider
+	// (subject) to the upload service (audience).
+	proofStore := ucanlib.NewContainerProofStore(req.Proofs)
+	for _, cmd := range requiredProofs {
+		chain, _, err := proofStore.ProofChain(ctx, s.uploadServiceDID, cmd, req.DID)
+		if err != nil {
+			return fmt.Errorf("%w: building proof chain for %s: %v", ErrInvalidProof, cmd, err)
+		}
+		if len(chain) == 0 {
+			return fmt.Errorf("%w: missing required %s delegation", ErrInvalidProof, cmd)
+		}
+	}
+
 	// ensure the did they claim to own is served from the endpoint they claim to own
 	if valid, err := assertEndpointServesDID(ctx, req.PublicURL, req.DID); err != nil {
 		log.Errorw("failed to assert endpoint", "DID", req.DID, "error", err)
 		return err
 	} else if !valid {
 		return ErrBadEndpoint
+	}
+
+	proofs, err := container.Encode(container.Base64Gzip, req.Proofs)
+	if err != nil {
+		return fmt.Errorf("encoding proofs: %w", err)
 	}
 
 	// if we reach here, they have a valid unregistered did in the allow list, with a domain service the did, and valid proof
@@ -147,6 +181,7 @@ func (s *Service) Register(ctx context.Context, req RegisterParams) error {
 		Address:       req.OwnerAddress.String(),
 		ProofSet:      req.ProofSetID,
 		OperatorEmail: req.OperatorEmail,
+		Proofs:        string(proofs),
 		InsertedAt:    now,
 		UpdatedAt:     now,
 	}); err != nil {
