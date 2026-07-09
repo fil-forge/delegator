@@ -21,10 +21,10 @@ import (
 	"github.com/fil-forge/libforge/commands/claim"
 	pdpcmds "github.com/fil-forge/libforge/commands/pdp"
 	"github.com/fil-forge/libforge/commands/space/egress"
+	"github.com/fil-forge/libforge/identity"
 	ucanlib "github.com/fil-forge/libforge/ucan"
 	"github.com/fil-forge/ucantone/did"
-	"github.com/fil-forge/ucantone/principal"
-	"github.com/fil-forge/ucantone/principal/ed25519/verifier"
+	"github.com/fil-forge/ucantone/multikey/ed25519/verifier"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/container"
 	"github.com/fil-forge/ucantone/ucan/delegation"
@@ -54,7 +54,7 @@ var (
 type Service struct {
 	store store.Store
 
-	signer principal.Signer
+	id identity.Identity
 
 	indexingServiceWebDID did.DID
 	indexingServiceProof  ucan.Delegation
@@ -74,7 +74,7 @@ type ServiceParams struct {
 	Store store.Store
 
 	// the identity of the delegator service
-	Signer principal.Signer
+	ID identity.Identity
 
 	// the web did of the indexing service (TODO is this still required after ./well-known change?
 	IndexingServiceWebDID did.DID `name:"indexing_service_web_did"`
@@ -95,7 +95,7 @@ type ServiceParams struct {
 func New(p ServiceParams) *Service {
 	return &Service{
 		store:                      p.Store,
-		signer:                     p.Signer,
+		id:                         p.ID,
 		indexingServiceWebDID:      p.IndexingServiceWebDID,
 		indexingServiceProof:       p.IndexingServiceProof,
 		egressTrackingServiceDID:   p.EgressTrackingServiceDID,
@@ -243,7 +243,7 @@ func (s *Service) RequestProofs(ctx context.Context, operator did.DID) (ucan.Con
 // invokes /claim/cache.
 func (s *Service) generateIndexerDelegation(id did.DID) (ucan.Container, error) {
 	isd, err := claim.Cache.Delegate(
-		s.signer,
+		s.id,
 		id,
 		s.indexingServiceWebDID,
 		delegation.WithNoExpiration(),
@@ -264,7 +264,7 @@ func (s *Service) generateIndexerDelegation(id did.DID) (ucan.Container, error) 
 // it later invokes /space/egress/track.
 func (s *Service) generateEgressTrackerDelegation(id did.DID) (ucan.Container, error) {
 	etd, err := egress.Track.Delegate(
-		s.signer,
+		s.id,
 		id,
 		s.egressTrackingServiceDID,
 		delegation.WithNoExpiration(),
@@ -401,7 +401,7 @@ func (s *Service) RequestContractApproval(ctx context.Context, req RequestApprov
 	}
 
 	// next validate they own the DID they claim
-	v, err := verifier.Parse(req.Operator.String())
+	v, err := verifier.ParseKeyDID(req.Operator.String())
 	if err != nil {
 		return ErrInvalidDID
 	}

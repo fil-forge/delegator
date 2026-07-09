@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/fil-forge/ucantone/multikey"
+	"github.com/fil-forge/ucantone/multikey/ed25519"
 	"github.com/fil-forge/ucantone/ucan/container"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/fx"
@@ -23,9 +25,8 @@ import (
 	"github.com/fil-forge/libforge/commands/claim"
 	pdpcmds "github.com/fil-forge/libforge/commands/pdp"
 	"github.com/fil-forge/libforge/commands/space/egress"
+	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
-	"github.com/fil-forge/ucantone/principal"
-	ed25519signer "github.com/fil-forge/ucantone/principal/ed25519"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/delegation"
 
@@ -99,19 +100,20 @@ func (m *mockStore) getProvider(did did.DID) (store.StorageProviderInfo, bool) {
 }
 
 // Helper functions for test data generation
-func generateTestSigner(t *testing.T) principal.Signer {
-	signer, err := ed25519signer.Generate()
+func generateTestIssuer(t *testing.T) multikey.Issuer {
+	t.Helper()
+	issuer, err := ed25519.GenerateIssuer()
 	if err != nil {
-		t.Fatalf("failed to create signer: %v", err)
+		t.Fatalf("failed to create issuer: %v", err)
 	}
-	return signer
+	return issuer
 }
 
-func generateIndexingProof(t *testing.T, indexingSigner, delegatorSigner principal.Signer) ucan.Delegation {
+func generateIndexingProof(t *testing.T, indexingIssuer ucan.Issuer, delegatorDID did.DID) ucan.Delegation {
 	dlg, err := claim.Cache.Delegate(
-		indexingSigner,
-		delegatorSigner.DID(),
-		indexingSigner.DID(),
+		indexingIssuer,
+		delegatorDID,
+		indexingIssuer.DID(),
 		delegation.WithNoExpiration(),
 	)
 	if err != nil {
@@ -120,11 +122,11 @@ func generateIndexingProof(t *testing.T, indexingSigner, delegatorSigner princip
 	return dlg
 }
 
-func generateEgressTrackingProof(t *testing.T, egressTrackingSigner, delegatorSigner principal.Signer) ucan.Delegation {
+func generateEgressTrackingProof(t *testing.T, egressTrackingIssuer ucan.Issuer, delegatorDID did.DID) ucan.Delegation {
 	dlg, err := egress.Track.Delegate(
-		egressTrackingSigner,
-		delegatorSigner.DID(),
-		egressTrackingSigner.DID(),
+		egressTrackingIssuer,
+		delegatorDID,
+		egressTrackingIssuer.DID(),
 		delegation.WithNoExpiration(),
 	)
 	if err != nil {
@@ -137,7 +139,7 @@ func generateEgressTrackingProof(t *testing.T, egressTrackingSigner, delegatorSi
 // provider delegates the required capabilities to the upload service. It is
 // returned as a container.Base64Gzip-encoded string, as the register request
 // expects.
-func providerProofs(t *testing.T, provider principal.Signer, uploadServiceDID did.DID) string {
+func providerProofs(t *testing.T, provider ucan.Issuer, uploadServiceDID did.DID) string {
 	t.Helper()
 	cmds := []ucan.Command{
 		blobcmds.Allocate.Command,
@@ -179,18 +181,18 @@ func findDelegationByIssuer(t *testing.T, ct *container.Container, issuer did.DI
 type mockStorageNode struct {
 	server  *httptest.Server
 	did     did.DID
-	signer  principal.Signer
+	issuer  ucan.Issuer
 	handler *echo.Echo
 }
 
 func newMockStorageNode(t *testing.T) *mockStorageNode {
-	signer := generateTestSigner(t)
+	issuer := generateTestIssuer(t)
 	e := echo.New()
 	e.HideBanner = true
 
 	node := &mockStorageNode{
-		did:     signer.DID(),
-		signer:  signer,
+		did:     issuer.DID(),
+		issuer:  issuer,
 		handler: e,
 	}
 
@@ -248,21 +250,21 @@ func (n *mockStorageNode) url() string {
 }
 
 // Test server setup
-func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, principal.Signer, principal.Signer, principal.Signer, principal.Signer, *mockContractOperator) {
+func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, ucan.Issuer, ucan.Issuer, ucan.Issuer, ucan.Issuer, *mockContractOperator) {
 	// Generate test signers
-	delegatorSigner := generateTestSigner(t)
-	indexingSigner := generateTestSigner(t)
-	egressTrackingSigner := generateTestSigner(t)
-	uploadSigner := generateTestSigner(t)
+	delegatorIssuer := generateTestIssuer(t)
+	indexingIssuer := generateTestIssuer(t)
+	egressTrackingIssuer := generateTestIssuer(t)
+	uploadIssuer := generateTestIssuer(t)
 
 	// Create mock contract operator
 	mockContractOp := newMockContractOperator()
 
 	// Generate indexing proof
-	indexingProof := generateIndexingProof(t, indexingSigner, delegatorSigner)
+	indexingProof := generateIndexingProof(t, indexingIssuer, delegatorIssuer.DID())
 
 	// Generate egress tracking proof
-	egressTrackingProof := generateEgressTrackingProof(t, egressTrackingSigner, delegatorSigner)
+	egressTrackingProof := generateEgressTrackingProof(t, egressTrackingIssuer, delegatorIssuer.DID())
 
 	// Get a free port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -279,9 +281,9 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, p
 			Port: port,
 		},
 		Delegator: config.DelegatorServiceConfig{
-			IndexingServiceWebDID:    indexingSigner.DID().String(),
-			EgressTrackingServiceDID: egressTrackingSigner.DID().String(),
-			UploadServiceDID:         uploadSigner.DID().String(),
+			IndexingServiceWebDID:    indexingIssuer.DID().String(),
+			EgressTrackingServiceDID: egressTrackingIssuer.DID().String(),
+			UploadServiceDID:         uploadIssuer.DID().String(),
 		},
 	}
 
@@ -290,21 +292,21 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, p
 		fx.Provide(
 			func() *config.Config { return testConfig },
 			func() store.Store { return mockStore },
-			func() principal.Signer { return delegatorSigner },
+			func() identity.Identity { return identity.Identity{Issuer: delegatorIssuer} },
 			fx.Annotate(
 				func() (did.DID, error) {
-					return did.Parse(indexingSigner.DID().String())
+					return did.Parse(indexingIssuer.DID().String())
 				},
 				fx.ResultTags(`name:"indexing_service_web_did"`),
 			),
 			fx.Annotate(
 				func() (did.DID, error) {
-					return did.Parse(egressTrackingSigner.DID().String())
+					return did.Parse(egressTrackingIssuer.DID().String())
 				},
 				fx.ResultTags(`name:"egress_tracking_service_did"`),
 			),
 			fx.Annotate(
-				func() did.DID { return uploadSigner.DID() },
+				func() did.DID { return uploadIssuer.DID() },
 				fx.ResultTags(`name:"upload_service_did"`),
 			),
 			fx.Annotate(
@@ -336,7 +338,7 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, p
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	return app, serverURL, delegatorSigner, indexingSigner, egressTrackingSigner, uploadSigner, mockContractOp
+	return app, serverURL, delegatorIssuer, indexingIssuer, egressTrackingIssuer, uploadIssuer, mockContractOp
 }
 
 func TestSystemHealthCheck(t *testing.T) {
@@ -376,7 +378,7 @@ func TestSystemDIDDocument(t *testing.T) {
 		t.Fatalf("get did document failed: %v", err)
 	}
 
-	if doc.ID != delegatorSigner.DID().String() {
+	if doc.ID != delegatorSigner.DID() {
 		t.Fatalf("unexpected id: got %s, want %s", doc.ID, delegatorSigner.DID().String())
 	}
 }
@@ -407,7 +409,7 @@ func TestSystemRegistrationFlow(t *testing.T) {
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     storageNode.url(),
-			Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
+			Proofs:        providerProofs(t, storageNode.issuer, uploadSigner.DID()),
 		})
 		if err != nil {
 			t.Fatalf("registration failed: %v", err)
@@ -433,7 +435,7 @@ func TestSystemRegistrationFlow(t *testing.T) {
 			ProofSetID:    1,
 			OperatorEmail: "test@example.com",
 			PublicURL:     storageNode.url(),
-			Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
+			Proofs:        providerProofs(t, storageNode.issuer, uploadSigner.DID()),
 		})
 		if err == nil {
 			t.Fatal("expected duplicate registration to fail")
@@ -441,7 +443,7 @@ func TestSystemRegistrationFlow(t *testing.T) {
 	})
 
 	t.Run("unauthorized DID registration should fail", func(t *testing.T) {
-		unauthorizedSigner := generateTestSigner(t)
+		unauthorizedSigner := generateTestIssuer(t)
 		unauthorizedNode := newMockStorageNode(t)
 		defer unauthorizedNode.close()
 
@@ -502,7 +504,7 @@ func TestSystemIsRegistered(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
-		Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
+		Proofs:        providerProofs(t, storageNode.issuer, uploadSigner.DID()),
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -521,7 +523,7 @@ func TestSystemIsRegistered(t *testing.T) {
 	})
 
 	t.Run("check unregistered DID", func(t *testing.T) {
-		unregisteredSigner := generateTestSigner(t)
+		unregisteredSigner := generateTestIssuer(t)
 		registered, err := c.IsRegistered(ctx, &client.IsRegisteredRequest{
 			DID: unregisteredSigner.DID().String(),
 		})
@@ -559,7 +561,7 @@ func TestSystemRequestProofs(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
-		Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
+		Proofs:        providerProofs(t, storageNode.issuer, uploadSigner.DID()),
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -639,7 +641,7 @@ func TestSystemRequestProofs(t *testing.T) {
 	})
 
 	t.Run("request proof for unregistered DID", func(t *testing.T) {
-		unregisteredSigner := generateTestSigner(t)
+		unregisteredSigner := generateTestIssuer(t)
 		mockStore.allowDID(unregisteredSigner.DID()) // Allow but don't register
 
 		_, err := c.RequestProofs(ctx, unregisteredSigner.DID().String())
@@ -649,7 +651,7 @@ func TestSystemRequestProofs(t *testing.T) {
 	})
 
 	t.Run("request proof for unauthorized DID", func(t *testing.T) {
-		unauthorizedSigner := generateTestSigner(t)
+		unauthorizedSigner := generateTestIssuer(t)
 		// Don't allow this DID
 
 		_, err := c.RequestProofs(ctx, unauthorizedSigner.DID().String())
@@ -702,7 +704,7 @@ func TestSystemEndToEndWorkflow(t *testing.T) {
 		ProofSetID:    1,
 		OperatorEmail: "test@example.com",
 		PublicURL:     storageNode.url(),
-		Proofs:        providerProofs(t, storageNode.signer, uploadSigner.DID()),
+		Proofs:        providerProofs(t, storageNode.issuer, uploadSigner.DID()),
 	})
 	if err != nil {
 		t.Fatalf("registration failed: %v", err)
@@ -908,7 +910,7 @@ func TestSystemRequestContractApproval(t *testing.T) {
 
 	t.Run("successful contract approval", func(t *testing.T) {
 		// Create a test signer
-		signer := generateTestSigner(t)
+		signer := generateTestIssuer(t)
 		mockStore.allowDID(signer.DID())
 		mockContractOp.registerProvider(testAddress, false) // Register but not yet approved
 
@@ -927,7 +929,7 @@ func TestSystemRequestContractApproval(t *testing.T) {
 
 	t.Run("DID not in allow list", func(t *testing.T) {
 		// Create a test signer but don't add to allow list
-		signer := generateTestSigner(t)
+		signer := generateTestIssuer(t)
 		testAddr := common.HexToAddress("0x2234567890123456789012345678901234567890")
 
 		signature := signer.Sign([]byte(signer.DID().String()))
@@ -944,7 +946,7 @@ func TestSystemRequestContractApproval(t *testing.T) {
 
 	t.Run("invalid signature", func(t *testing.T) {
 		// Create a test signer and add to allow list
-		signer := generateTestSigner(t)
+		signer := generateTestIssuer(t)
 		mockStore.allowDID(signer.DID())
 		testAddr := common.HexToAddress("0x3234567890123456789012345678901234567890")
 		mockContractOp.registerProvider(testAddr, false)
@@ -964,7 +966,7 @@ func TestSystemRequestContractApproval(t *testing.T) {
 
 	t.Run("provider not registered with contract", func(t *testing.T) {
 		// Create a test signer and add to allow list but don't register with contract
-		signer := generateTestSigner(t)
+		signer := generateTestIssuer(t)
 		mockStore.allowDID(signer.DID())
 		testAddr := common.HexToAddress("0x4234567890123456789012345678901234567890")
 		// Do NOT register with contract
@@ -983,7 +985,7 @@ func TestSystemRequestContractApproval(t *testing.T) {
 
 	t.Run("already approved provider (idempotent)", func(t *testing.T) {
 		// Create a test signer
-		signer := generateTestSigner(t)
+		signer := generateTestIssuer(t)
 		mockStore.allowDID(signer.DID())
 		testAddr := common.HexToAddress("0x5234567890123456789012345678901234567890")
 		mockContractOp.registerProvider(testAddr, true) // Already approved
