@@ -39,6 +39,7 @@ func (h *Handlers) Root(c echo.Context) error {
 func (h *Handlers) DIDDocument(c echo.Context) error {
 	doc, err := h.id.DIDDocument()
 	if err != nil {
+		log.Error("failed to get DID document", "error", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to get DID document",
 		})
