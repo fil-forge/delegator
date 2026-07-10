@@ -3,28 +3,22 @@ package providers
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/big"
 	"os"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/fil-forge/libforge/identity"
-	"github.com/fil-forge/ucantone/ucan"
-	"go.uber.org/fx"
-
+	"github.com/fil-forge/delegator/internal/config"
+	"github.com/fil-forge/delegator/internal/services/registrar"
 	"github.com/fil-forge/forgectl/pkg/services/chain"
 	"github.com/fil-forge/forgectl/pkg/services/inspector"
 	"github.com/fil-forge/forgectl/pkg/services/operator"
 	"github.com/fil-forge/forgectl/pkg/services/types"
+	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
-	"github.com/fil-forge/ucantone/principal"
-	"github.com/fil-forge/ucantone/principal/ed25519"
-	"github.com/fil-forge/ucantone/principal/signer"
+	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/delegation"
-
-	"github.com/fil-forge/delegator/internal/config"
-	"github.com/fil-forge/delegator/internal/services/registrar"
+	"go.uber.org/fx"
 )
 
 type SignerParams struct {
@@ -34,20 +28,20 @@ type SignerParams struct {
 
 type SignerResult struct {
 	fx.Out
-	Signer principal.Signer
+	ID identity.Identity
 }
 
 func ProvideSigner(params SignerParams) (SignerResult, error) {
-	var s principal.Signer
+	var id identity.Identity
 	var err error
 	switch {
 	case params.Config.Delegator.Key != "":
-		s, err = ed25519.Parse(params.Config.Delegator.Key)
+		id, err = identity.New(params.Config.Delegator.Key, params.Config.Delegator.DID)
 		if err != nil {
 			return SignerResult{}, fmt.Errorf("failed to parse multibase key: %w", err)
 		}
 	case params.Config.Delegator.KeyFile != "":
-		s, err = signerFromEd25519PEMFile(params.Config.Delegator.KeyFile)
+		id, err = identity.NewFromPEMFileWithDID(params.Config.Delegator.KeyFile, params.Config.Delegator.DID)
 		if err != nil {
 			return SignerResult{}, fmt.Errorf("failed to parse key file: %w", err)
 		}
@@ -55,31 +49,7 @@ func ProvideSigner(params SignerParams) (SignerResult, error) {
 		return SignerResult{}, fmt.Errorf("no key or key file provided")
 	}
 
-	did, err := did.Parse(params.Config.Delegator.DID)
-	if err != nil {
-		return SignerResult{}, fmt.Errorf("failed to parse did: %w", err)
-	}
-
-	signer, err := signer.Wrap(s, did)
-	if err != nil {
-		return SignerResult{}, err
-	}
-
-	return SignerResult{Signer: signer}, nil
-}
-
-func signerFromEd25519PEMFile(path string) (principal.Signer, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	pemData, err := io.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("reading private key: %w", err)
-	}
-
-	return identity.DecodeEd25519SignerFromPEM(pemData)
+	return SignerResult{ID: id}, nil
 }
 
 type IndexingServiceWebDIDParams struct {

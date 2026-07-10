@@ -9,8 +9,7 @@ import (
 	"github.com/fil-forge/libforge/commands/space/egress"
 	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
-	"github.com/fil-forge/ucantone/principal"
-	"github.com/fil-forge/ucantone/principal/signer"
+	"github.com/fil-forge/ucantone/multikey"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/delegation"
 	"github.com/spf13/cobra"
@@ -50,11 +49,12 @@ func init() {
 }
 
 func mkDelegation(cmd *cobra.Command, _ []string) error {
-	issuer, err := parseIssuerKey(issuerPrivateKeyFile)
+	signer, err := parseIssuerKey(issuerPrivateKeyFile)
 	if err != nil {
 		return fmt.Errorf("parsing issuer private key from file %s: %w", issuerPrivateKeyFile, err)
 	}
 
+	issuer := multikey.KeyIssuer(signer)
 	if issuerDidWebKey != "" {
 		issuerDidWeb, err := did.Parse(issuerDidWebKey)
 		if err != nil {
@@ -63,10 +63,7 @@ func mkDelegation(cmd *cobra.Command, _ []string) error {
 		if issuerDidWeb.Method() != "web" {
 			return fmt.Errorf("issuer did:web: must start with 'did:web:' prefix")
 		}
-		issuer, err = signer.Wrap(issuer, issuerDidWeb)
-		if err != nil {
-			return fmt.Errorf("wrapping issuer with did web key (%s): %w", issuerDidWebKey, err)
-		}
+		issuer = multikey.NewIssuer(issuerDidWeb, signer)
 	}
 
 	audience, err := did.Parse(audienceDidKey)
@@ -118,10 +115,10 @@ func mkDelegation(cmd *cobra.Command, _ []string) error {
 
 // parseIssuerKey attempts to read and parse the private key from the
 // provided path.
-func parseIssuerKey(path string) (principal.Signer, error) {
+func parseIssuerKey(path string) (multikey.Signer, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading file: %w", err)
 	}
-	return identity.DecodeEd25519SignerFromPEM(data)
+	return identity.DecodeSignerFromPEM(data)
 }
