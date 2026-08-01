@@ -13,7 +13,7 @@ require (
 	github.com/fil-forge/ucantone v0.0.0-20260706102443-79141c5cc52e
 	github.com/ipfs/go-log/v2 v2.9.1
 	github.com/labstack/echo/v4 v4.13.4
-	github.com/spf13/cobra v1.9.1
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.uber.org/fx v1.24.0
 )
