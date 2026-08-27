@@ -15,7 +15,7 @@ Go HTTP service that manages storage provider onboarding for the network:
 - Handles on-chain contract approval of providers via the provider registry
   smart contract (through `forgectl`).
 
-Module: `github.com/fil-forge/delegator` (Go 1.25.3).
+Module: `github.com/fil-forge/delegator` (Go 1.27).
 
 ## Build / Test / Run
 
