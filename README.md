@@ -216,7 +216,7 @@ export REGISTRAR_STORE_REGION=us-west-2
 ## Development
 
 ### Prerequisites
-- Go 1.25.3 or later
+- Go 1.27 or later
 - Access to DynamoDB (AWS or local)
 - Ed25519 private key for delegator identity
 
