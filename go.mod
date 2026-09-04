@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.45.1
 	github.com/aws/aws-sdk-go-v2/config v1.33.2
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.2
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.63.4
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.66.0
 	github.com/ethereum/go-ethereum v1.17.5
 	github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2
 	github.com/fil-forge/libforge v0.0.0-20260724113901-7fc3b2cec1ef
@@ -28,7 +28,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.1 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.19 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.12.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.8.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.36.0 // indirect
