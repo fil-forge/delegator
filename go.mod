@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.69.1
-	github.com/ethereum/go-ethereum v1.17.6
+	github.com/ethereum/go-ethereum v1.17.7
 	github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2
 	github.com/fil-forge/libforge v0.0.0-20260724113901-7fc3b2cec1ef
 	github.com/fil-forge/ucantone v0.0.0-20260827134420-25cf8340b9a1
