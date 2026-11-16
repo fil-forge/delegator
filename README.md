@@ -204,6 +204,7 @@ delegator:
   indexing_service_web_did: did:web:indexing.example.com
   indexing_service_proof: "<base64-proof>"
   upload_service_did: did:key:uploadservice...
+  insecure_did_resolution: false # Optional: resolve did:web over HTTP (development only)
 ```
 
 ### Environment Variables
