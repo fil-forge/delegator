@@ -10,7 +10,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2
 	github.com/fil-forge/libforge v0.0.0-20260724113901-7fc3b2cec1ef
-	github.com/fil-forge/ucantone v0.0.0-20260827134420-25cf8340b9a1
+	github.com/fil-forge/ucantone v0.0.0-20261120104359-4253712d41e4
 	github.com/ipfs/go-log/v2 v2.9.2
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/spf13/cobra v1.10.2
@@ -22,7 +22,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
-	github.com/alanshaw/dag-json-gen v0.0.9 // indirect
+	github.com/alanshaw/dag-json-gen v0.0.11 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.9 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.12 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.12 // indirect
@@ -51,7 +51,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/gobwas/glob v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
