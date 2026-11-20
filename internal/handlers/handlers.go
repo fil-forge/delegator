@@ -179,6 +179,52 @@ func (h *Handlers) RequestProofs(c echo.Context) error {
 	}})
 }
 
+type RequestSigningProofRequest struct {
+	DID string `json:"did"`
+}
+
+type RequestSigningProofResponse struct {
+	// Proof is a gzip-encoded UCAN container holding the delegation chain from
+	// the signing service to the node.
+	Proof []byte `json:"proof"`
+}
+
+func (h *Handlers) RequestSigningProof(c echo.Context) error {
+	var req RequestSigningProofRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	operator, err := did.Parse(req.DID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid DID"})
+	}
+
+	proof, err := h.service.RequestSigningProof(c.Request().Context(), operator)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, registrar.ErrDIDNotAllowed) {
+			// A refusal is the allow list working; a node that should be on it
+			// shows up here as a run of these.
+			status = http.StatusForbidden
+			log.Warn("refused signing proof", "operator", operator, "error", err)
+		} else {
+			// Nodes cannot sign PDP operations while this fails.
+			log.Error("failed to issue signing proof", "operator", operator, "error", err)
+		}
+		return c.JSON(status, map[string]string{"error": err.Error()})
+	}
+
+	encoded, err := container.Encode(container.RawGzip, proof)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "failed to read generated signing proof",
+		})
+	}
+
+	return c.JSON(http.StatusOK, RequestSigningProofResponse{Proof: encoded})
+}
+
 type IsRegisteredRequest struct {
 	DID string `json:"did"`
 }
