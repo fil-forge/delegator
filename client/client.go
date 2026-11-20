@@ -204,6 +204,54 @@ func (c *Client) RequestProofs(ctx context.Context, did string) (*RequestProofsR
 	return &result, nil
 }
 
+type RequestSigningProofRequest struct {
+	DID string `json:"did"`
+}
+
+type RequestSigningProofResponse struct {
+	// Proof is a gzip-encoded UCAN container holding the delegation chain from
+	// the signing service to the node.
+	Proof []byte `json:"proof"`
+}
+
+// RequestSigningProof requests a short-lived delegation chain that lets the
+// node invoke the signing service.
+func (c *Client) RequestSigningProof(ctx context.Context, did string) (*RequestSigningProofResponse, error) {
+	body, err := json.Marshal(&RequestSigningProofRequest{DID: did})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/registrar/request-signing-proof", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
+			if errMsg, ok := errResp["error"]; ok {
+				return nil, fmt.Errorf("request signing proof failed: %s", errMsg)
+			}
+		}
+		return nil, fmt.Errorf("request signing proof failed with status: %d", resp.StatusCode)
+	}
+
+	var result RequestSigningProofResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &result, nil
+}
+
 func (c *Client) HealthCheck(ctx context.Context) error {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/healthcheck", nil)
 	if err != nil {

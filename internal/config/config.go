@@ -42,6 +42,7 @@ func NewConfig() (*Config, error) {
 			EgressTrackingServiceDID:       viper.GetString("delegator.egress_tracking_service_did"),
 			EgressTrackingServiceProof:     viper.GetString("delegator.egress_tracking_service_proof"),
 			EgressTrackingServiceProofFile: viper.GetString("delegator.egress_tracking_service_proof_file"),
+			SigningServiceProofFile:        viper.GetString("delegator.signing_service_proof_file"),
 			UploadServiceDID:               viper.GetString("delegator.upload_service_did"),
 		},
 		Contract: ContractOperatorConfig{
@@ -101,6 +102,9 @@ func NewConfig() (*Config, error) {
 	}
 	if cfg.Delegator.EgressTrackingServiceProof != "" && cfg.Delegator.EgressTrackingServiceProofFile != "" {
 		return nil, fmt.Errorf("both delegator egress tracking service proof and proof file are set, please provide only one")
+	}
+	if cfg.Delegator.SigningServiceProofFile == "" {
+		return nil, fmt.Errorf("delegator signing service proof file not set")
 	}
 	if cfg.Delegator.UploadServiceDID == "" {
 		return nil, fmt.Errorf("delegator upload service DID not set")
@@ -185,6 +189,7 @@ type DelegatorServiceConfig struct {
 	EgressTrackingServiceDID       string `mapstructure:"egress_tracking_service_did"`
 	EgressTrackingServiceProof     string `mapstructure:"egress_tracking_service_proof"`
 	EgressTrackingServiceProofFile string `mapstructure:"egress_tracking_service_proof_file"`
+	SigningServiceProofFile        string `mapstructure:"signing_service_proof_file"`
 	UploadServiceDID               string `mapstructure:"upload_service_did"`
 }
 
