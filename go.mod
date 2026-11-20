@@ -9,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.74.0
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2
-	github.com/fil-forge/libforge v0.0.0-20260724113901-7fc3b2cec1ef
-	github.com/fil-forge/ucantone v0.0.0-20261120104359-4253712d41e4
+	github.com/fil-forge/libforge v0.0.0-20261120163920-be478caf686c
+	github.com/fil-forge/ucantone v0.0.0-20261120160831-cf6c452a3cd7
 	github.com/ipfs/go-log/v2 v2.9.2
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/spf13/cobra v1.10.2
@@ -57,10 +57,10 @@ require (
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/ipfs/go-cid v0.6.2 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-isatty v0.0.22 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mr-tron/base58 v1.3.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
@@ -96,7 +96,7 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
+	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect
 	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect

@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/fil-forge/delegator/internal/services/registrar"
+	"github.com/fil-forge/libforge/diddoc"
 	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
 	"github.com/fil-forge/ucantone/ucan/container"
@@ -36,15 +37,28 @@ func (h *Handlers) Root(c echo.Context) error {
 	return c.String(http.StatusOK, "hello")
 }
 
-func (h *Handlers) DIDDocument(c echo.Context) error {
-	doc, err := h.id.DIDDocument()
+// DIDDocument serves the service identity's DID document for did:web
+// resolution. Responses carry Cache-Control, ETag and Last-Modified headers,
+// and conditional requests get a 304 when the document has not changed.
+func (h *Handlers) DIDDocument() echo.HandlerFunc {
+	handler, err := newDIDDocumentHandler(h.id)
 	if err != nil {
 		log.Error("failed to get DID document", "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "failed to get DID document",
-		})
+		return func(c echo.Context) error {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "failed to get DID document",
+			})
+		}
 	}
-	return c.JSON(http.StatusOK, doc)
+	return echo.WrapHandler(handler)
+}
+
+func newDIDDocumentHandler(id identity.Identity) (http.Handler, error) {
+	doc, err := id.DIDDocument()
+	if err != nil {
+		return nil, err
+	}
+	return diddoc.NewHandler(doc)
 }
 
 type RegisterRequest struct {
