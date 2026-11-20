@@ -43,6 +43,7 @@ func NewConfig() (*Config, error) {
 			EgressTrackingServiceProof:     viper.GetString("delegator.egress_tracking_service_proof"),
 			EgressTrackingServiceProofFile: viper.GetString("delegator.egress_tracking_service_proof_file"),
 			UploadServiceDID:               viper.GetString("delegator.upload_service_did"),
+			InsecureDIDResolution:          viper.GetBool("delegator.insecure_did_resolution"),
 		},
 		Contract: ContractOperatorConfig{
 			ChainClientEndpoint:     viper.GetString("contract.chain_client_endpoint"),
@@ -186,6 +187,9 @@ type DelegatorServiceConfig struct {
 	EgressTrackingServiceProof     string `mapstructure:"egress_tracking_service_proof"`
 	EgressTrackingServiceProofFile string `mapstructure:"egress_tracking_service_proof_file"`
 	UploadServiceDID               string `mapstructure:"upload_service_did"`
+	// InsecureDIDResolution resolves did:web over HTTP instead of HTTPS. For
+	// development stacks only.
+	InsecureDIDResolution bool `mapstructure:"insecure_did_resolution"`
 }
 
 type ContractOperatorConfig struct {

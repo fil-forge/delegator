@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,6 +17,9 @@ import (
 	"github.com/fil-forge/forgectl/pkg/services/types"
 	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/did/key"
+	"github.com/fil-forge/ucantone/did/resolver"
+	"github.com/fil-forge/ucantone/did/web"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/delegation"
 	"go.uber.org/fx"
@@ -50,6 +54,22 @@ func ProvideSigner(params SignerParams) (SignerResult, error) {
 	}
 
 	return SignerResult{ID: id}, nil
+}
+
+// didResolverCacheTTL is how long a resolved did:web document is reused.
+const didResolverCacheTTL = 3 * time.Hour
+
+// ProvideDIDResolver returns the resolver for the DIDs of storage nodes:
+// did:key, and did:web over HTTPS.
+func ProvideDIDResolver(cfg *config.Config) (did.Resolver, error) {
+	httpResolver, err := web.NewResolver(web.WithInsecure(cfg.Delegator.InsecureDIDResolution))
+	if err != nil {
+		return nil, fmt.Errorf("creating did:web resolver: %w", err)
+	}
+	return resolver.ByMethod{
+		"key": key.Resolver,
+		"web": resolver.NewCached(httpResolver, didResolverCacheTTL),
+	}, nil
 }
 
 type IndexingServiceWebDIDParams struct {
