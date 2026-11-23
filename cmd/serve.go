@@ -18,6 +18,9 @@ var ServeCmd = &cobra.Command{
 	Short: "Start the HTTP server",
 	Long:  `Start the registrar HTTP server with configured endpoints.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := bindStoreFlags(cmd.Flags()); err != nil {
+			return err
+		}
 		cfg, err := config.NewConfig()
 		if err != nil {
 			return err
@@ -36,10 +39,7 @@ var ServeCmd = &cobra.Command{
 				providers.ProvideContractOperator,
 
 				// Store
-				fx.Annotate(
-					store.NewDynamoDBStore,
-					fx.As(new(store.Store)),
-				),
+				store.NewFromConfig,
 
 				// Service
 				registrar.New,
@@ -67,11 +67,7 @@ func init() {
 	ServeCmd.Flags().Int("port", 8080, "Server port")
 
 	// Store flags
-	ServeCmd.Flags().String("store-region", "", "AWS region for DynamoDB")
-	ServeCmd.Flags().String("store-allowlist-table", "", "DynamoDB table name for allowlist")
-	ServeCmd.Flags().String("store-providerinfo-table", "", "DynamoDB table name for provider info")
-	ServeCmd.Flags().Uint("store-provider-weight", 1, "Default weight for registered providers")
-	ServeCmd.Flags().String("store-endpoint", "", "DynamoDB endpoint (for local testing)")
+	addStoreFlags(ServeCmd.Flags())
 
 	// Service flags
 	ServeCmd.Flags().String("delegator-key", "", "Multibase-encoded delegator private key")
@@ -100,13 +96,7 @@ func init() {
 	cobra.CheckErr(viper.BindPFlag("server.host", ServeCmd.Flags().Lookup("host")))
 	cobra.CheckErr(viper.BindPFlag("server.port", ServeCmd.Flags().Lookup("port")))
 
-	cobra.CheckErr(viper.BindPFlag("store.region", ServeCmd.Flags().Lookup("store-region")))
-	cobra.CheckErr(viper.BindPFlag("store.allowlist_table_name", ServeCmd.Flags().Lookup("store-allowlist-table")))
-	// bind flag to storoku-style environment variable
-	cobra.CheckErr(viper.BindEnv("store.allowlist_table_name", "STORAGE_PROVIDER_ALLOW_LIST_TABLE_ID"))
-	cobra.CheckErr(viper.BindPFlag("store.providerinfo_table_name", ServeCmd.Flags().Lookup("store-providerinfo-table")))
-	cobra.CheckErr(viper.BindPFlag("store.providerweight", ServeCmd.Flags().Lookup("store-provider-weight")))
-	cobra.CheckErr(viper.BindPFlag("store.endpoint", ServeCmd.Flags().Lookup("store-endpoint")))
+	// Store flags are bound in RunE, see bindStoreFlags.
 
 	cobra.CheckErr(viper.BindPFlag("delegator.key", ServeCmd.Flags().Lookup("delegator-key")))
 	cobra.CheckErr(viper.BindPFlag("delegator.key_file", ServeCmd.Flags().Lookup("delegator-key-file")))

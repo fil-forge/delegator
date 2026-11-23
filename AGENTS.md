@@ -50,7 +50,9 @@ internal/
   services/registrar/    # Core logic: registration, proof validation, delegation minting,
     delegator.go         #   contract approval
   providers/providers.go # uber/fx dependency providers (signer, DIDs, proofs, contract operator)
-  store/                 # DynamoDB persistence (Store interface, DynamoDB impl)
+  store/                 # Persistence: Store interface, DynamoDB and Postgres impls,
+    open.go              #   backend selection (store.type)
+    migrations/          #   Postgres schema (goose, embedded, run on startup)
 client/client.go         # Go client library for external consumers
 test/system_test.go      # system test suite
 deploy/                  # Terraform (app/ + shared/) using storoku modules
@@ -123,18 +125,37 @@ avoid duplicate-approval failures. On-chain access goes through
 
 ## Storage
 
-DynamoDB via `internal/store/dynamo.go`, two tables:
+`store.type` selects the backend (`store.Open` in `internal/store/open.go`):
+`dynamodb` (default) or `postgres`. Both implement the `Store` interface in
+`internal/store/types.go`, and both commands (`serve`, `store`) go through
+`store.Open`.
+
+**DynamoDB** (`internal/store/dynamo.go`), two tables:
 
 - allowlist table (`store.allowlist_table_name`)
 - provider info table (`store.providerinfo_table_name`)
 
-The store creates missing tables on initialization — convenient for local
-DynamoDB, relevant to IAM permissions in real deployments. Local dev:
+The store creates missing tables only when `store.endpoint` is set (local
+DynamoDB); without it, a missing table fails startup. Local dev:
 
 ```bash
 docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb
 export REGISTRAR_STORE_ENDPOINT=localhost:8000
 ```
+
+**Postgres** (`internal/store/postgres.go`), configured with
+`store.postgres.dsn` (`REGISTRAR_STORE_POSTGRES_DSN`) and
+`store.postgres.max_conns`. Tables `allow_list` and `provider_info` mirror the
+DynamoDB items, including `weight`. Goose migrations embedded from
+`internal/store/migrations` run on every startup under a Postgres advisory
+lock; add a new numbered file for any schema change, never edit an applied
+one. Tests in `internal/store/postgres_test.go` run against Postgres in
+testcontainers: they skip without Docker locally and fail without it on Linux
+CI.
+
+The store flags are defined once in `cmd/store_flags.go` and bound to viper
+when a command runs. `serve` and `store` both define them, and binding in
+`init()` would make the last command registered win.
 
 ## Configuration
 

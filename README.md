@@ -9,7 +9,7 @@ Built with:
 - **Viper** - Configuration management (files, env vars, flags)
 - **Uber.fx** - Dependency injection framework
 - **Echo** - High-performance HTTP server
-- **DynamoDB** - Persistent storage for provider registry
+- **DynamoDB** or **PostgreSQL** - Persistent storage for the allow list and provider registry
 
 ## Quick Start
 
@@ -193,11 +193,17 @@ server:
   port: 8080
 
 store:
+  type: dynamodb # dynamodb (default) or postgres
+  providerweight: 100
+  # DynamoDB settings, used when type is dynamodb
   region: us-east-1
   allowlist_table_name: delegator-allowlist
   providerinfo_table_name: delegator-providers
-  providerweight: 100
   endpoint: "" # Optional: for local DynamoDB
+  # Postgres settings, used when type is postgres
+  postgres:
+    dsn: "" # Prefer REGISTRAR_STORE_POSTGRES_DSN, the DSN holds the password
+    max_conns: 10
 
 delegator:
   key_file: /path/to/private/key.pem
@@ -213,11 +219,35 @@ export REGISTRAR_SERVER_PORT=9090
 export REGISTRAR_STORE_REGION=us-west-2
 ```
 
+### Storage backends
+
+The delegator keeps its allow list and provider registry in DynamoDB by
+default. To use PostgreSQL instead, set the store type and a connection string:
+
+```bash
+export REGISTRAR_STORE_TYPE=postgres
+export REGISTRAR_STORE_POSTGRES_DSN='postgres://delegator:YOUR_PASSWORD_HERE@localhost:5432/delegator'
+export REGISTRAR_STORE_POSTGRES_MAX_CONNS=10 # Optional, default 10
+```
+
+The same settings are available as `--store-type`, `--store-postgres-dsn` and
+`--store-postgres-max-conns` flags on `serve` and `store`. A flag value shows
+up in the process list, so pass the DSN through the environment.
+
+On startup, the Postgres store creates its tables by running the schema
+migrations in `internal/store/migrations`. An advisory lock lets several
+instances start against the same database at once. The database user needs
+permission to create tables in its schema.
+
+The `store allow-did` and `store disallow-did` commands use whichever backend
+the configuration selects.
+
 ## Development
 
 ### Prerequisites
 - Go 1.27 or later
-- Access to DynamoDB (AWS or local)
+- Access to DynamoDB (AWS or local) or PostgreSQL
+- Docker, to run the Postgres store tests (they are skipped without it)
 - Ed25519 private key for delegator identity
 
 ### Local Development with Docker
@@ -227,6 +257,15 @@ docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb
 
 # Configure for local development
 export REGISTRAR_STORE_ENDPOINT=localhost:8000
+```
+
+Or run a local Postgres:
+
+```bash
+docker run -p 5432:5432 -e POSTGRES_USER=delegator -e POSTGRES_PASSWORD=delegator postgres:16-alpine
+
+export REGISTRAR_STORE_TYPE=postgres
+export REGISTRAR_STORE_POSTGRES_DSN='postgres://delegator:delegator@localhost:5432/delegator?sslmode=disable'
 ```
 
 ## Container images
