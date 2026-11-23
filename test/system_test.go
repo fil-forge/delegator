@@ -27,6 +27,8 @@ import (
 	"github.com/fil-forge/libforge/commands/space/egress"
 	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/did/key"
+	"github.com/fil-forge/ucantone/did/resolver"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/delegation"
 
@@ -100,6 +102,36 @@ func (m *mockStore) getProvider(did did.DID) (store.StorageProviderInfo, bool) {
 }
 
 // Helper functions for test data generation
+// testWebDIDs holds the DID documents of the did:web operators the tests
+// create, in place of fetching them over HTTPS.
+var testWebDIDs = resolver.WellKnown{}
+
+var testDIDResolver = resolver.ByMethod{
+	"key": key.Resolver,
+	"web": testWebDIDs,
+}
+
+// generateTestWebIssuer creates an operator identified by a did:web at host,
+// and publishes its DID document to the test resolver.
+func generateTestWebIssuer(t *testing.T, host string) multikey.Issuer {
+	t.Helper()
+	d, err := did.Parse("did:web:" + host)
+	if err != nil {
+		t.Fatalf("failed to parse did: %v", err)
+	}
+	signer, err := ed25519.Generate()
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+	issuer := multikey.NewIssuer(d, signer)
+	doc, err := identity.Identity{Issuer: issuer}.DIDDocument()
+	if err != nil {
+		t.Fatalf("failed to create DID document: %v", err)
+	}
+	testWebDIDs[d] = doc
+	return issuer
+}
+
 func generateTestIssuer(t *testing.T) multikey.Issuer {
 	t.Helper()
 	issuer, err := ed25519.GenerateIssuer()
@@ -318,6 +350,7 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, u
 				fx.ResultTags(`name:"egress_tracking_service_proof"`),
 			),
 			func() registrar.ContractOperator { return mockContractOp },
+			func() did.Resolver { return testDIDResolver },
 			registrar.New,
 			handlers.NewHandlers,
 			server.NewServer,
@@ -924,6 +957,43 @@ func TestSystemRequestContractApproval(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("contract approval failed: %v", err)
+		}
+	})
+
+	t.Run("successful contract approval of a did:web operator", func(t *testing.T) {
+		signer := generateTestWebIssuer(t, "node.example")
+		mockStore.allowDID(signer.DID())
+		testAddr := common.HexToAddress("0x6234567890123456789012345678901234567890")
+		mockContractOp.registerProvider(testAddr, false)
+
+		signature := signer.Sign([]byte(signer.DID().String()))
+
+		err = c.RequestApproval(ctx, &client.RequestApprovalRequest{
+			Operator:     signer.DID().String(),
+			OwnerAddress: testAddr.String(),
+			Signature:    signature,
+		})
+		if err != nil {
+			t.Fatalf("contract approval failed: %v", err)
+		}
+	})
+
+	t.Run("did:web operator signed by a key not in its document", func(t *testing.T) {
+		signer := generateTestWebIssuer(t, "other-node.example")
+		mockStore.allowDID(signer.DID())
+		testAddr := common.HexToAddress("0x7234567890123456789012345678901234567890")
+		mockContractOp.registerProvider(testAddr, false)
+
+		impostor := generateTestIssuer(t)
+		signature := impostor.Sign([]byte(signer.DID().String()))
+
+		err = c.RequestApproval(ctx, &client.RequestApprovalRequest{
+			Operator:     signer.DID().String(),
+			OwnerAddress: testAddr.String(),
+			Signature:    signature,
+		})
+		if err == nil {
+			t.Fatal("expected contract approval to fail for a key the DID document does not list")
 		}
 	})
 

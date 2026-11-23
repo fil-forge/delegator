@@ -33,6 +33,7 @@ var ServeCmd = &cobra.Command{
 				providers.ProvideEgressTrackingServiceDID,
 				providers.ProvideEgressTrackingServiceProof,
 				providers.ProvideUploadServiceDID,
+				providers.ProvideDIDResolver,
 				providers.ProvideContractOperator,
 
 				// Store
@@ -85,6 +86,7 @@ func init() {
 	ServeCmd.Flags().String("delegator-egress-tracking-service-proof", "", "Base64-encoded proof from egress tracking service")
 	ServeCmd.Flags().String("delegator-egress-tracking-service-proof-file", "", "Path to file containing proof from egress tracking service")
 	ServeCmd.Flags().String("delegator-upload-service-did", "", "DID of the upload service")
+	ServeCmd.Flags().Bool("delegator-insecure-did-resolution", false, "Resolve did:web over HTTP instead of HTTPS (development only)")
 
 	// Contract operator flags
 	ServeCmd.Flags().String("contract-chain-client-endpoint", FilecoinCalibrationNetworkChainEndpoint, "Blockchain client RPC endpoint URL")
@@ -118,6 +120,7 @@ func init() {
 	cobra.CheckErr(viper.BindPFlag("delegator.egress_tracking_service_proof", ServeCmd.Flags().Lookup("delegator-egress-tracking-service-proof")))
 	cobra.CheckErr(viper.BindPFlag("delegator.egress_tracking_service_proof_file", ServeCmd.Flags().Lookup("delegator-egress-tracking-service-proof-file")))
 	cobra.CheckErr(viper.BindPFlag("delegator.upload_service_did", ServeCmd.Flags().Lookup("delegator-upload-service-did")))
+	cobra.CheckErr(viper.BindPFlag("delegator.insecure_did_resolution", ServeCmd.Flags().Lookup("delegator-insecure-did-resolution")))
 
 	cobra.CheckErr(viper.BindPFlag("contract.chain_client_endpoint", ServeCmd.Flags().Lookup("contract-chain-client-endpoint")))
 	cobra.CheckErr(viper.BindPFlag("contract.payments_contract_address", ServeCmd.Flags().Lookup("contract-payments-contract-address")))

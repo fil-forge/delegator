@@ -24,10 +24,10 @@ import (
 	"github.com/fil-forge/libforge/identity"
 	ucanlib "github.com/fil-forge/libforge/ucan"
 	"github.com/fil-forge/ucantone/did"
-	"github.com/fil-forge/ucantone/multikey/ed25519/verifier"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/container"
 	"github.com/fil-forge/ucantone/ucan/delegation"
+	"github.com/fil-forge/ucantone/validator"
 
 	"github.com/fil-forge/delegator/internal/store"
 )
@@ -45,6 +45,7 @@ var (
 	ErrBadEndpoint          = errors.New("did not found at endpoint")
 	ErrInvalidProof         = errors.New("invalid proof")
 	ErrInvalidDID           = errors.New("invalid did")
+	ErrDIDResolution        = errors.New("did document could not be resolved")
 	ErrInvalidSignature     = errors.New("invalid signature")
 
 	// blockchain/smartcontract errors
@@ -65,6 +66,9 @@ type Service struct {
 	uploadServiceDID did.DID
 
 	contractOperator ContractOperator
+
+	// resolver resolves the DIDs of storage nodes.
+	resolver did.Resolver
 }
 
 type ServiceParams struct {
@@ -90,6 +94,9 @@ type ServiceParams struct {
 	UploadServiceDID did.DID `name:"upload_service_did"`
 
 	ContractOperator ContractOperator
+
+	// resolves the DIDs of storage nodes, to check what they sign
+	DIDResolver did.Resolver
 }
 
 func New(p ServiceParams) *Service {
@@ -102,6 +109,7 @@ func New(p ServiceParams) *Service {
 		egressTrackingServiceProof: p.EgressTrackingServiceProof,
 		uploadServiceDID:           p.UploadServiceDID,
 		contractOperator:           p.ContractOperator,
+		resolver:                   p.DIDResolver,
 	}
 }
 
@@ -385,7 +393,8 @@ type RequestApprovalParams struct {
 // Returns:
 //   - nil on success (provider is approved)
 //   - ErrDIDNotAllowed if the DID is not in the allow list
-//   - ErrInvalidDID if the DID format is invalid
+//   - ErrDIDResolution if the DID document could not be fetched
+//   - ErrInvalidDID if the DID document is not the operator's
 //   - ErrInvalidSignature if the signature verification fails
 //   - ErrContractProviderNotRegistered if the provider is not registered with the smart contract
 //   - ErrInternal for unexpected errors (database failures, contract call failures, etc.)
@@ -400,13 +409,17 @@ func (s *Service) RequestContractApproval(ctx context.Context, req RequestApprov
 		return ErrDIDNotAllowed
 	}
 
-	// next validate they own the DID they claim
-	v, err := verifier.ParseKeyDID(req.Operator.String())
+	// next validate they own the DID they claim: providers sign their own DID
+	// with its private key, here we verify the signature.
+	signed, err := s.signedByDID(ctx, req.Operator, []byte(req.Operator.String()), req.Signature)
 	if err != nil {
-		return ErrInvalidDID
+		log.Errorw("failed to resolve DID", "DID", req.Operator, "error", err)
+		if errors.Is(err, ErrInvalidDID) {
+			return ErrInvalidDID
+		}
+		return ErrDIDResolution
 	}
-	// providers sign their own DID with its private key, here we verify the signature.
-	if !v.Verify([]byte(req.Operator.String()), req.Signature) {
+	if !signed {
 		// logging since this may represent someone doing something nasty!
 		log.Errorw("failed to verify DID", "DID", req.Operator, "signature", req.Signature)
 		return ErrInvalidSignature
@@ -443,4 +456,49 @@ func (s *Service) RequestContractApproval(ctx context.Context, req RequestApprov
 	}
 	// the provider is approved if we reach this point, success!
 	return nil
+}
+
+// signedByDID reports whether sig is a signature of msg by a key the DID
+// document of d currently lists for authentication. A did:key lists its one
+// key; a did:web lists whatever its document publishes, and a key the document
+// marks expired or revoked is not used. A key the document lists for another
+// purpose only does not authenticate the DID.
+//
+// The error wraps ErrInvalidDID when the document resolved is for another DID.
+func (s *Service) signedByDID(ctx context.Context, d did.DID, msg, sig []byte) (bool, error) {
+	doc, err := s.resolver.Resolve(ctx, d)
+	if err != nil {
+		return false, fmt.Errorf("resolving %s: %w", d, err)
+	}
+	if doc.ID != d {
+		return false, fmt.Errorf("%w: document resolved for %s is for %s", ErrInvalidDID, d, doc.ID)
+	}
+
+	var vms []did.VerificationMethod
+	if doc.Authentication != nil {
+		vms = doc.Authentication.All()
+	}
+
+	now := time.Now()
+	factories := validator.DefaultFactories()
+	for _, vm := range vms {
+		if !vm.ValidAt(now) {
+			continue
+		}
+		f, ok := factories[vm.Type]
+		if !ok {
+			continue
+		}
+		v, err := f(ctx, vm.Material)
+		if err != nil {
+			if ctx.Err() != nil {
+				return false, ctx.Err()
+			}
+			continue
+		}
+		if v.Verify(msg, sig) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

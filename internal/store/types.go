@@ -9,7 +9,7 @@ import (
 
 // StorageProviderInfo represents the provider metadata table
 type StorageProviderInfo struct {
-	// Provider is the did:key of the storage node.
+	// Provider is the DID of the storage node.
 	Provider string `json:"provider" db:"provider"`
 	// Endpoint is the domain the storage node is reachable at.
 	Endpoint string `json:"endpoint" db:"endpoint"`
