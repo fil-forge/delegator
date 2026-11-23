@@ -276,6 +276,9 @@ func (h *Handlers) RequestContractApproval(c echo.Context) error {
 		if errors.Is(err, registrar.ErrInvalidDID) {
 			return c.String(http.StatusBadRequest, "invalid DID")
 		}
+		if errors.Is(err, registrar.ErrDIDResolution) {
+			return c.String(http.StatusBadGateway, "DID document could not be resolved")
+		}
 		if errors.Is(err, registrar.ErrInvalidSignature) {
 			return c.String(http.StatusBadRequest, "signature is invalid")
 		}

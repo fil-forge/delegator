@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -56,11 +55,10 @@ func ProvideSigner(params SignerParams) (SignerResult, error) {
 	return SignerResult{ID: id}, nil
 }
 
-// didResolverCacheTTL is how long a resolved did:web document is reused.
-const didResolverCacheTTL = 3 * time.Hour
-
 // ProvideDIDResolver returns the resolver for the DIDs of storage nodes:
-// did:key, and did:web over HTTPS.
+// did:key, and did:web over HTTPS. A did:web document is fetched from the host
+// the DID names, without following redirects, and is reused for as long as
+// that host's caching headers allow.
 func ProvideDIDResolver(cfg *config.Config) (did.Resolver, error) {
 	httpResolver, err := web.NewResolver(web.WithInsecure(cfg.Delegator.InsecureDIDResolution))
 	if err != nil {
@@ -68,7 +66,7 @@ func ProvideDIDResolver(cfg *config.Config) (did.Resolver, error) {
 	}
 	return resolver.ByMethod{
 		"key": key.Resolver,
-		"web": resolver.NewCached(httpResolver, didResolverCacheTTL),
+		"web": httpResolver,
 	}, nil
 }
 

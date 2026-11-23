@@ -1,6 +1,7 @@
 package registrar
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -91,11 +92,62 @@ func TestSignedByDID(t *testing.T) {
 		}
 	})
 
+	t.Run("a key the document lists for another purpose does not", func(t *testing.T) {
+		current, other := newKey(t), newKey(t)
+		doc := documentOf(t, current)
+		vm := multikey.DeriveVerificationMethod(doc.Fragment("key-1"), other.Verifier().(multikey.Verifier))
+		vm.Controller = doc.ID
+		if err := doc.VerificationMethods.Add(vm); err != nil {
+			t.Fatal(err)
+		}
+		if err := doc.AssertionMethod.Add(vm); err != nil {
+			t.Fatal(err)
+		}
+		svc := &Service{resolver: resolver.WellKnown{webDID: doc}}
+
+		ok, err := svc.signedByDID(t.Context(), webDID, msg, other.Sign(msg))
+		if err != nil || ok {
+			t.Fatalf("want not signed, got %v, %v", ok, err)
+		}
+	})
+
+	t.Run("a document with no authentication keys authenticates nothing", func(t *testing.T) {
+		k := newKey(t)
+		doc := documentOf(t, k)
+		doc.Authentication = nil
+		svc := &Service{resolver: resolver.WellKnown{webDID: doc}}
+
+		ok, err := svc.signedByDID(t.Context(), webDID, msg, k.Sign(msg))
+		if err != nil || ok {
+			t.Fatalf("want not signed, got %v, %v", ok, err)
+		}
+	})
+
+	t.Run("a document for another DID is refused", func(t *testing.T) {
+		k := newKey(t)
+		otherDID, err := did.Parse("did:web:other.example")
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc, err := identity.Identity{Issuer: multikey.NewIssuer(otherDID, k)}.DIDDocument()
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc := &Service{resolver: resolver.WellKnown{webDID: doc}}
+
+		_, err = svc.signedByDID(t.Context(), webDID, msg, k.Sign(msg))
+		if !errors.Is(err, ErrInvalidDID) {
+			t.Fatalf("want ErrInvalidDID, got %v", err)
+		}
+	})
+
 	t.Run("a DID that does not resolve is an error", func(t *testing.T) {
 		svc := &Service{resolver: resolver.WellKnown{}}
 
 		if _, err := svc.signedByDID(t.Context(), webDID, msg, newKey(t).Sign(msg)); err == nil {
 			t.Fatal("want an error for an unresolvable DID")
+		} else if errors.Is(err, ErrInvalidDID) {
+			t.Fatalf("a failed resolution does not make the DID invalid, got %v", err)
 		}
 	})
 }

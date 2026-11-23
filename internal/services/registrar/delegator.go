@@ -45,6 +45,7 @@ var (
 	ErrBadEndpoint          = errors.New("did not found at endpoint")
 	ErrInvalidProof         = errors.New("invalid proof")
 	ErrInvalidDID           = errors.New("invalid did")
+	ErrDIDResolution        = errors.New("did document could not be resolved")
 	ErrInvalidSignature     = errors.New("invalid signature")
 
 	// blockchain/smartcontract errors
@@ -392,7 +393,8 @@ type RequestApprovalParams struct {
 // Returns:
 //   - nil on success (provider is approved)
 //   - ErrDIDNotAllowed if the DID is not in the allow list
-//   - ErrInvalidDID if the DID cannot be resolved to a DID document
+//   - ErrDIDResolution if the DID document could not be fetched
+//   - ErrInvalidDID if the DID document is not the operator's
 //   - ErrInvalidSignature if the signature verification fails
 //   - ErrContractProviderNotRegistered if the provider is not registered with the smart contract
 //   - ErrInternal for unexpected errors (database failures, contract call failures, etc.)
@@ -412,7 +414,10 @@ func (s *Service) RequestContractApproval(ctx context.Context, req RequestApprov
 	signed, err := s.signedByDID(ctx, req.Operator, []byte(req.Operator.String()), req.Signature)
 	if err != nil {
 		log.Errorw("failed to resolve DID", "DID", req.Operator, "error", err)
-		return ErrInvalidDID
+		if errors.Is(err, ErrInvalidDID) {
+			return ErrInvalidDID
+		}
+		return ErrDIDResolution
 	}
 	if !signed {
 		// logging since this may represent someone doing something nasty!
@@ -456,18 +461,22 @@ func (s *Service) RequestContractApproval(ctx context.Context, req RequestApprov
 // signedByDID reports whether sig is a signature of msg by a key the DID
 // document of d currently lists for authentication. A did:key lists its one
 // key; a did:web lists whatever its document publishes, and a key the document
-// marks expired or revoked is not used.
+// marks expired or revoked is not used. A key the document lists for another
+// purpose only does not authenticate the DID.
+//
+// The error wraps ErrInvalidDID when the document resolved is for another DID.
 func (s *Service) signedByDID(ctx context.Context, d did.DID, msg, sig []byte) (bool, error) {
 	doc, err := s.resolver.Resolve(ctx, d)
 	if err != nil {
 		return false, fmt.Errorf("resolving %s: %w", d, err)
 	}
+	if doc.ID != d {
+		return false, fmt.Errorf("%w: document resolved for %s is for %s", ErrInvalidDID, d, doc.ID)
+	}
 
 	var vms []did.VerificationMethod
 	if doc.Authentication != nil {
 		vms = doc.Authentication.All()
-	} else if doc.VerificationMethods != nil {
-		vms = doc.VerificationMethods.All()
 	}
 
 	now := time.Now()
