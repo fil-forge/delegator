@@ -25,12 +25,19 @@ func NewConfig() (*Config, error) {
 			Host: viper.GetString("server.host"),
 			Port: viper.GetInt("server.port"),
 		},
-		Store: DynamoConfig{
-			Region:                viper.GetString("store.region"),
-			AllowListTableName:    viper.GetString("store.allowlist_table_name"),
-			ProviderInfoTableName: viper.GetString("store.providerinfo_table_name"),
-			ProviderWeight:        viper.GetUint("store.providerweight"),
-			Endpoint:              viper.GetString("store.endpoint"),
+		Store: StoreConfig{
+			Type: viper.GetString("store.type"),
+			DynamoConfig: DynamoConfig{
+				Region:                viper.GetString("store.region"),
+				AllowListTableName:    viper.GetString("store.allowlist_table_name"),
+				ProviderInfoTableName: viper.GetString("store.providerinfo_table_name"),
+				ProviderWeight:        viper.GetUint("store.providerweight"),
+				Endpoint:              viper.GetString("store.endpoint"),
+			},
+			Postgres: PostgresConfig{
+				DSN:      viper.GetString("store.postgres.dsn"),
+				MaxConns: viper.GetInt32("store.postgres.max_conns"),
+			},
 		},
 		Delegator: DelegatorServiceConfig{
 			Key:                            viper.GetString("delegator.key"),
@@ -66,14 +73,8 @@ func NewConfig() (*Config, error) {
 		cfg.Server.Port = 8080
 	}
 
-	if cfg.Store.Region == "" {
-		return nil, fmt.Errorf("store region not set")
-	}
-	if cfg.Store.AllowListTableName == "" {
-		return nil, fmt.Errorf("store allow list table not set")
-	}
-	if cfg.Store.ProviderInfoTableName == "" {
-		return nil, fmt.Errorf("store provider info table not set")
+	if err := cfg.Store.Validate(); err != nil {
+		return nil, err
 	}
 
 	if cfg.Delegator.Key == "" && cfg.Delegator.KeyFile == "" {
@@ -143,7 +144,7 @@ func NewConfig() (*Config, error) {
 
 type Config struct {
 	Server    ServerConfig           `mapstructure:"server"`
-	Store     DynamoConfig           `mapstructure:"store"`
+	Store     StoreConfig            `mapstructure:"store"`
 	Delegator DelegatorServiceConfig `mapstructure:"delegator"`
 	Contract  ContractOperatorConfig `mapstructure:"contract"`
 }
@@ -154,6 +155,58 @@ type ServerConfig struct {
 
 func (c *ServerConfig) Address() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+const (
+	StoreTypeDynamoDB = "dynamodb"
+	StoreTypePostgres = "postgres"
+)
+
+// StoreConfig selects the storage backend and configures it. DynamoDB is the
+// default, so a deployment that sets no type keeps its DynamoDB tables.
+type StoreConfig struct {
+	// Type is the storage backend: "dynamodb" (default) or "postgres".
+	Type string `mapstructure:"type"`
+	// DynamoConfig sits directly under `store`, so the DynamoDB keys and
+	// REGISTRAR_STORE_* variables existing deployments set keep working.
+	DynamoConfig `mapstructure:",squash"`
+	Postgres     PostgresConfig `mapstructure:"postgres"`
+}
+
+// Validate checks the settings of the selected backend. An empty Type means
+// DynamoDB.
+func (c StoreConfig) Validate() error {
+	switch c.Type {
+	case StoreTypeDynamoDB, "":
+		if c.Region == "" {
+			return fmt.Errorf("store region not set")
+		}
+		if c.AllowListTableName == "" {
+			return fmt.Errorf("store allow list table not set")
+		}
+		if c.ProviderInfoTableName == "" {
+			return fmt.Errorf("store provider info table not set")
+		}
+	case StoreTypePostgres:
+		if c.Postgres.DSN == "" {
+			return fmt.Errorf("store postgres dsn not set (required when store type is %q)", StoreTypePostgres)
+		}
+		if c.Postgres.MaxConns < 0 {
+			return fmt.Errorf("store postgres max conns must not be negative, got %d", c.Postgres.MaxConns)
+		}
+	default:
+		return fmt.Errorf("unknown store type %q (valid: %s, %s)", c.Type, StoreTypeDynamoDB, StoreTypePostgres)
+	}
+	return nil
+}
+
+type PostgresConfig struct {
+	// DSN is the Postgres connection string, e.g.
+	// postgres://user:password@host:5432/delegator. It holds the database
+	// password, so prefer setting it through REGISTRAR_STORE_POSTGRES_DSN.
+	DSN string `mapstructure:"dsn"`
+	// MaxConns caps the connection pool. Zero keeps pgx's default.
+	MaxConns int32 `mapstructure:"max_conns"`
 }
 
 type DynamoConfig struct {

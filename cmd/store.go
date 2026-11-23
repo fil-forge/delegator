@@ -15,7 +15,7 @@ import (
 var StoreCmd = &cobra.Command{
 	Use:   "store",
 	Short: "Manage store operations",
-	Long:  `Commands for managing the DynamoDB store, including allowlist management.`,
+	Long:  `Commands for managing the store (DynamoDB or Postgres), including allowlist management.`,
 }
 
 var allowDIDCmd = &cobra.Command{
@@ -38,12 +38,12 @@ var allowDIDCmd = &cobra.Command{
 			return fmt.Errorf("failed to load configuration: %w", err)
 		}
 
-		db, err := store.NewDynamoDBStore(cfg.Store)
+		ctx := context.Background()
+		db, closeStore, err := store.Open(ctx, cfg.Store)
 		if err != nil {
 			return fmt.Errorf("failed to initialize store: %w", err)
 		}
-
-		ctx := context.Background()
+		defer closeStore()
 
 		// Check if DID is already allowed
 		allowed, err := db.IsAllowedDID(ctx, parsedDID)
@@ -87,12 +87,12 @@ var disallowDIDCmd = &cobra.Command{
 			return fmt.Errorf("failed to load configuration: %w", err)
 		}
 
-		db, err := store.NewDynamoDBStore(cfg.Store)
+		ctx := context.Background()
+		db, closeStore, err := store.Open(ctx, cfg.Store)
 		if err != nil {
 			return fmt.Errorf("failed to initialize store: %w", err)
 		}
-
-		ctx := context.Background()
+		defer closeStore()
 
 		// Check if DID is allowed
 		allowed, err := db.IsAllowedDID(ctx, parsedDID)
@@ -117,19 +117,10 @@ var disallowDIDCmd = &cobra.Command{
 }
 
 func init() {
-	// Add store flags (similar to serve command)
-	StoreCmd.PersistentFlags().String("store-region", "", "AWS region for DynamoDB")
-	StoreCmd.PersistentFlags().String("store-allowlist-table", "", "DynamoDB table name for allowlist")
-	StoreCmd.PersistentFlags().String("store-providerinfo-table", "", "DynamoDB table name for provider info")
-	StoreCmd.PersistentFlags().Uint("store-provider-weight", 1, "Default weight for registered providers")
-	StoreCmd.PersistentFlags().String("store-endpoint", "", "DynamoDB endpoint (for local testing)")
-
-	// Bind flags to viper
-	cobra.CheckErr(viper.BindPFlag("store.region", StoreCmd.PersistentFlags().Lookup("store-region")))
-	cobra.CheckErr(viper.BindPFlag("store.allowlist_table_name", StoreCmd.PersistentFlags().Lookup("store-allowlist-table")))
-	cobra.CheckErr(viper.BindPFlag("store.providerinfo_table_name", StoreCmd.PersistentFlags().Lookup("store-providerinfo-table")))
-	cobra.CheckErr(viper.BindPFlag("store.providerweight", StoreCmd.PersistentFlags().Lookup("store-provider-weight")))
-	cobra.CheckErr(viper.BindPFlag("store.endpoint", StoreCmd.PersistentFlags().Lookup("store-endpoint")))
+	addStoreFlags(StoreCmd.PersistentFlags())
+	StoreCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		return bindStoreFlags(cmd.Flags())
+	}
 
 	// Add subcommands
 	StoreCmd.AddCommand(allowDIDCmd)
