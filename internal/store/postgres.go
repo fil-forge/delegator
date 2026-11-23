@@ -38,7 +38,7 @@ type Postgres struct {
 // applies any pending schema migrations before returning. Call Close to
 // release the connection pool.
 func NewPostgresStore(ctx context.Context, cfg config.StoreConfig) (*Postgres, error) {
-	if cfg.ProviderWeight > math.MaxInt64 {
+	if uint64(cfg.ProviderWeight) > math.MaxInt64 {
 		return nil, fmt.Errorf("provider weight %d does not fit the weight column (max %d)", cfg.ProviderWeight, int64(math.MaxInt64))
 	}
 
