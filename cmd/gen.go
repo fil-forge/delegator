@@ -9,6 +9,7 @@ import (
 	"github.com/fil-forge/libforge/commands/space/egress"
 	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
+	"github.com/fil-forge/ucantone/did/web"
 	"github.com/fil-forge/ucantone/multikey"
 	"github.com/fil-forge/ucantone/ucan"
 	"github.com/fil-forge/ucantone/ucan/delegation"
@@ -56,12 +57,9 @@ func mkDelegation(cmd *cobra.Command, _ []string) error {
 
 	issuer := multikey.KeyIssuer(signer)
 	if issuerDidWebKey != "" {
-		issuerDidWeb, err := did.Parse(issuerDidWebKey)
+		issuerDidWeb, err := web.Parse(issuerDidWebKey)
 		if err != nil {
-			return fmt.Errorf("parsing issuer did web key (%s): %w", issuerDidWebKey, err)
-		}
-		if issuerDidWeb.Method() != "web" {
-			return fmt.Errorf("issuer did:web: must start with 'did:web:' prefix")
+			return fmt.Errorf("parsing issuer did:web (%s): %w", issuerDidWebKey, err)
 		}
 		issuer = multikey.NewIssuer(issuerDidWeb, signer)
 	}

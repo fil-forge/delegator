@@ -107,10 +107,10 @@ github.com/fil-forge/filecoin-services/go v0.0.0-20260507172456-36ebe4467390 h1:
 github.com/fil-forge/filecoin-services/go v0.0.0-20260507172456-36ebe4467390/go.mod h1:ur5fRrG8v9twwwRFdX7lquGza4liT6x/xAFW7T4XVIc=
 github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2 h1:bmpfrIGcHiqcCCC5U69wRc4+ycraP0DPmw+Vdk6feR4=
 github.com/fil-forge/forgectl v0.0.0-20260507183024-793714651bc2/go.mod h1:r3mJDZrMIpgURUjXuD+bb+V8NCUjLQJLCAUsuJo6N2I=
-github.com/fil-forge/libforge v0.0.0-20261120163920-be478caf686c h1:NlFe+0Uiia6xEqmyLncClPAAXc4XxjQ/WAidiKnppDM=
-github.com/fil-forge/libforge v0.0.0-20261120163920-be478caf686c/go.mod h1:bvAs+1dZ3MM2yIBYG1oMX/+dD7MyybEYLZQ/hH8FYD4=
-github.com/fil-forge/ucantone v0.0.0-20261120160831-cf6c452a3cd7 h1:3Bhat1RvTC2z3NMpy6l22C97VKQYp2dEBxY1SdJsW4I=
-github.com/fil-forge/ucantone v0.0.0-20261120160831-cf6c452a3cd7/go.mod h1:PJe9Lcv+QWawlM29ItA9y5JzFIs37gZ3jODxYKXbQkM=
+github.com/fil-forge/libforge v0.0.0-20261123132321-e3267015aa44 h1:qTw0xtrVOhxbmgNxMGaJ4Zwdrha0bJ/6MGaKU9/xU7Q=
+github.com/fil-forge/libforge v0.0.0-20261123132321-e3267015aa44/go.mod h1:Z2F5ns5o/fk64SUJE79ctLYI5M1khrYSJbh4/xd74DE=
+github.com/fil-forge/ucantone v0.0.0-20261123131543-0ef2b25abb66 h1:bjARwsoQ+D3xANVSIbCSQSUvb5ZR4GdGV8dRXnoD/cs=
+github.com/fil-forge/ucantone v0.0.0-20261123131543-0ef2b25abb66/go.mod h1:PJe9Lcv+QWawlM29ItA9y5JzFIs37gZ3jODxYKXbQkM=
 github.com/filecoin-project/go-data-segment v0.0.1 h1:1wmDxOG4ubWQm3ZC1XI5nCon5qgSq7Ra3Rb6Dbu10Gs=
 github.com/filecoin-project/go-data-segment v0.0.1/go.mod h1:H0/NKbsRxmRFBcLibmABv+yFNHdmtl5AyplYLnb0Zv4=
 github.com/filecoin-project/go-fil-commcid v0.3.1 h1:4EfxpHSlvtkOqa9weG2Yt5kxFmPib2xU7Uc9Lbqk7fs=
