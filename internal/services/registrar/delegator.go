@@ -20,11 +20,13 @@ import (
 	replicacmds "github.com/fil-forge/libforge/commands/blob/replica"
 	"github.com/fil-forge/libforge/commands/claim"
 	pdpcmds "github.com/fil-forge/libforge/commands/pdp"
+	"github.com/fil-forge/libforge/commands/pdp/sign"
 	"github.com/fil-forge/libforge/commands/space/egress"
 	"github.com/fil-forge/libforge/identity"
 	ucanlib "github.com/fil-forge/libforge/ucan"
 	"github.com/fil-forge/ucantone/did"
 	"github.com/fil-forge/ucantone/ucan"
+	"github.com/fil-forge/ucantone/ucan/command"
 	"github.com/fil-forge/ucantone/ucan/container"
 	"github.com/fil-forge/ucantone/ucan/delegation"
 	"github.com/fil-forge/ucantone/validator"
@@ -63,6 +65,8 @@ type Service struct {
 	egressTrackingServiceDID   did.DID
 	egressTrackingServiceProof ucan.Delegation
 
+	signingServiceProof ucan.Delegation
+
 	uploadServiceDID did.DID
 
 	contractOperator ContractOperator
@@ -90,6 +94,10 @@ type ServiceParams struct {
 	// proof from the egress tracking service, delegated to this delegator
 	EgressTrackingServiceProof ucan.Delegation `name:"egress_tracking_service_proof"`
 
+	// proof from the signing service, delegated to this delegator, allowing it
+	// to create delegations on behalf of the signing service
+	SigningServiceProof ucan.Delegation `name:"signing_service_proof"`
+
 	// the did of the upload service, used for validating operator proofs are correct
 	UploadServiceDID did.DID `name:"upload_service_did"`
 
@@ -107,6 +115,7 @@ func New(p ServiceParams) *Service {
 		indexingServiceProof:       p.IndexingServiceProof,
 		egressTrackingServiceDID:   p.EgressTrackingServiceDID,
 		egressTrackingServiceProof: p.EgressTrackingServiceProof,
+		signingServiceProof:        p.SigningServiceProof,
 		uploadServiceDID:           p.UploadServiceDID,
 		contractOperator:           p.ContractOperator,
 		resolver:                   p.DIDResolver,
@@ -241,6 +250,54 @@ func (s *Service) RequestProofs(ctx context.Context, operator did.DID) (ucan.Con
 	}
 
 	return indexerProof, egressTrackerProof, nil
+}
+
+// SigningProofValidity is how long a signing delegation is valid for. It is
+// short because a node cannot be cut off any sooner: nothing checks revocation,
+// so a node removed from the allow list keeps signing until its delegation
+// expires.
+const SigningProofValidity = time.Hour
+
+// signCommand is the parent of every /pdp/sign/* command.
+var signCommand = command.MustParse("/pdp/sign")
+
+// RequestSigningProof issues the next hop on the chain rooted at
+// s.signingServiceProof (signing service → delegator), extending it to the
+// storage node. A node on the allow list needs a dataset before it can
+// register, so until it is registered it may only sign the creation of one;
+// once registered it may sign every PDP operation.
+func (s *Service) RequestSigningProof(ctx context.Context, operator did.DID) (ucan.Container, error) {
+	allowed, err := s.store.IsAllowedDID(ctx, operator)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if DID is allowed: %w", err)
+	}
+	if !allowed {
+		return nil, ErrDIDNotAllowed
+	}
+
+	registered, err := s.store.IsRegisteredDID(ctx, operator)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if DID is registered: %w", err)
+	}
+	cmd := sign.DataSetCreate.Command
+	if registered {
+		cmd = signCommand
+	}
+
+	dlg, err := delegation.Delegate(
+		s.id,
+		operator,
+		s.signingServiceProof.Subject(),
+		cmd,
+		delegation.WithExpiration(ucan.UnixTimestamp(time.Now().Add(SigningProofValidity).Unix())),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate delegation from signing service to storage node: %w", err)
+	}
+	log.Infow("issued signing proof", "DID", operator, "command", cmd, "registered", registered)
+	return container.New(
+		container.WithDelegations(s.signingServiceProof, dlg),
+	), nil
 }
 
 // generateIndexerDelegation mints the next hop on the chain rooted at

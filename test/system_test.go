@@ -24,12 +24,14 @@ import (
 	replicacmds "github.com/fil-forge/libforge/commands/blob/replica"
 	"github.com/fil-forge/libforge/commands/claim"
 	pdpcmds "github.com/fil-forge/libforge/commands/pdp"
+	"github.com/fil-forge/libforge/commands/pdp/sign"
 	"github.com/fil-forge/libforge/commands/space/egress"
 	"github.com/fil-forge/libforge/identity"
 	"github.com/fil-forge/ucantone/did"
 	"github.com/fil-forge/ucantone/did/key"
 	"github.com/fil-forge/ucantone/did/resolver"
 	"github.com/fil-forge/ucantone/ucan"
+	"github.com/fil-forge/ucantone/ucan/command"
 	"github.com/fil-forge/ucantone/ucan/delegation"
 
 	"github.com/fil-forge/delegator/client"
@@ -167,6 +169,20 @@ func generateEgressTrackingProof(t *testing.T, egressTrackingIssuer ucan.Issuer,
 	return dlg
 }
 
+func generateSigningProof(t *testing.T, signingIssuer ucan.Issuer, delegatorDID did.DID) ucan.Delegation {
+	dlg, err := delegation.Delegate(
+		signingIssuer,
+		delegatorDID,
+		signingIssuer.DID(),
+		command.MustParse("/pdp/sign"),
+		delegation.WithNoExpiration(),
+	)
+	if err != nil {
+		t.Fatalf("failed to create signing proof: %v", err)
+	}
+	return dlg
+}
+
 // providerProofs builds the container a registering provider must supply: the
 // provider delegates the required capabilities to the upload service. It is
 // returned as a container.Base64Gzip-encoded string, as the register request
@@ -298,6 +314,10 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, u
 	// Generate egress tracking proof
 	egressTrackingProof := generateEgressTrackingProof(t, egressTrackingIssuer, delegatorIssuer.DID())
 
+	// Generate signing proof. The signing service is the proof's issuer and
+	// subject, so tests read its DID back off the root of a returned chain.
+	signingProof := generateSigningProof(t, generateTestIssuer(t), delegatorIssuer.DID())
+
 	// Get a free port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -348,6 +368,10 @@ func setupTestServer(t *testing.T, mockStore *mockStore) (*fxtest.App, string, u
 			fx.Annotate(
 				func() ucan.Delegation { return egressTrackingProof },
 				fx.ResultTags(`name:"egress_tracking_service_proof"`),
+			),
+			fx.Annotate(
+				func() ucan.Delegation { return signingProof },
+				fx.ResultTags(`name:"signing_service_proof"`),
 			),
 			func() registrar.ContractOperator { return mockContractOp },
 			func() did.Resolver { return testDIDResolver },
@@ -690,6 +714,110 @@ func TestSystemRequestProofs(t *testing.T) {
 		_, err := c.RequestProofs(ctx, unauthorizedSigner.DID().String())
 		if err == nil {
 			t.Fatal("expected request proof to fail for unauthorized DID")
+		}
+	})
+}
+
+func TestSystemRequestSigningProof(t *testing.T) {
+	mockStore := newMockStore()
+	app, serverURL, delegatorSigner, _, _, uploadSigner, _ := setupTestServer(t, mockStore)
+	defer app.RequireStop()
+
+	c, err := client.New(serverURL)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+	ctx := context.Background()
+
+	storageNode := newMockStorageNode(t)
+	defer storageNode.close()
+
+	// requestChain returns the root proof (signing service → delegator) and the
+	// hop issued to the node (delegator → node).
+	requestChain := func(t *testing.T) (ucan.Delegation, ucan.Delegation) {
+		t.Helper()
+		resp, err := c.RequestSigningProof(ctx, storageNode.did.String())
+		if err != nil {
+			t.Fatalf("request signing proof failed: %v", err)
+		}
+		ct, err := container.Decode(resp.Proof)
+		if err != nil {
+			t.Fatalf("failed to parse returned signing proof container: %v", err)
+		}
+		if n := len(ct.Delegations()); n != 2 {
+			t.Fatalf("expected the root proof and one hop, got %d delegations", n)
+		}
+		hop := findDelegationByIssuer(t, ct, delegatorSigner.DID())
+		var root ucan.Delegation
+		for _, d := range ct.Delegations() {
+			if d.Link() != hop.Link() {
+				root = d
+			}
+		}
+		if root.Audience() != delegatorSigner.DID() {
+			t.Fatalf("root proof audience: got %s, want %s", root.Audience(), delegatorSigner.DID())
+		}
+		if hop.Audience() != storageNode.did {
+			t.Fatalf("hop audience: got %s, want %s", hop.Audience(), storageNode.did)
+		}
+		if hop.Subject() != root.Issuer() {
+			t.Fatalf("hop subject: got %s, want the signing service %s", hop.Subject(), root.Issuer())
+		}
+		exp := hop.Expiration()
+		if exp == nil {
+			t.Fatal("expected the hop to expire")
+		}
+		latest := time.Now().Add(registrar.SigningProofValidity).Unix()
+		if int64(*exp) > latest || int64(*exp) < latest-60 {
+			t.Fatalf("hop expiry %d is not %s from now", *exp, registrar.SigningProofValidity)
+		}
+		return root, hop
+	}
+
+	t.Run("DID off the allow list is refused", func(t *testing.T) {
+		if _, err := c.RequestSigningProof(ctx, storageNode.did.String()); err == nil {
+			t.Fatal("expected a DID off the allow list to be refused")
+		}
+	})
+
+	mockStore.allowDID(storageNode.did)
+
+	t.Run("allowed but unregistered DID may only create a dataset", func(t *testing.T) {
+		_, hop := requestChain(t)
+		if hop.Command() != sign.DataSetCreate.Command {
+			t.Fatalf("hop command: got %s, want %s", hop.Command(), sign.DataSetCreate.Command)
+		}
+	})
+
+	err = c.Register(ctx, &client.RegisterRequest{
+		Operator:      storageNode.did.String(),
+		OwnerAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890").String(),
+		ProofSetID:    1,
+		OperatorEmail: "test@example.com",
+		PublicURL:     storageNode.url(),
+		Proofs:        providerProofs(t, storageNode.issuer, uploadSigner.DID()),
+	})
+	if err != nil {
+		t.Fatalf("registration failed: %v", err)
+	}
+
+	t.Run("registered DID may sign every PDP operation", func(t *testing.T) {
+		_, hop := requestChain(t)
+		for _, cmd := range []ucan.Command{
+			sign.DataSetCreate.Command,
+			sign.DataSetDelete.Command,
+			sign.PiecesAdd.Command,
+			sign.PiecesRemoveSchedule.Command,
+		} {
+			if !hop.Command().Proves(cmd) {
+				t.Fatalf("hop command %s does not prove %s", hop.Command(), cmd)
+			}
+		}
+	})
+
+	t.Run("invalid DID is rejected", func(t *testing.T) {
+		if _, err := c.RequestSigningProof(ctx, "not-a-did"); err == nil {
+			t.Fatal("expected an invalid DID to be rejected")
 		}
 	})
 }

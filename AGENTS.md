@@ -71,6 +71,7 @@ Routes are wired in `internal/server/server.go`:
 | POST | `/registrar/request-approval` | On-chain contract approval of a provider |
 | GET | `/registrar/request-proof` | DEPRECATED single-proof variant — remove when unused |
 | GET | `/registrar/request-proofs` | Delegation proofs (indexer + egress tracker) |
+| GET | `/registrar/request-signing-proof` | Short-lived delegation for the signing service |
 | GET | `/registrar/is-registered` | Check registration status |
 
 `request-proofs` returns two gzip-encoded UCAN containers
@@ -98,8 +99,22 @@ hop, keeping the original subject so the chain resolves at invocation time:
 - `/claim/cache`: indexing service → delegator → storage node
 - `/space/egress/track`: egress tracking service → delegator → storage node
 
-Each returned container carries both the root proof and the new hop.
-Delegations are minted with `WithNoExpiration()`.
+Each returned container carries both the root proof and the new hop. A
+container sorts its tokens bytewise, so a node has to put them back in chain
+order (root first) before presenting them as invocation proofs. These two are
+issued with `WithNoExpiration()`.
+
+**Issued to nodes on the allow list** — `request-signing-proof` extends the
+signing service's proof the same way (signing service → delegator → storage
+node), valid for one hour (`SigningProofValidity`):
+
+- a registered node gets `/pdp/sign`, which covers every signing command
+- a node that is allowed but not yet registered gets
+  `/pdp/sign/dataset/create` only, because it needs a dataset before it can
+  register
+
+The expiry is what removes a node's access: nothing checks revocation, so a
+node taken off the allow list can sign until its last delegation runs out.
 
 ## Registration validation (`Service.Register`)
 
@@ -166,12 +181,15 @@ Key sections (see `internal/config/config.go`):
 - `server`: host, port
 - `store`: region, table names, provider weight, optional endpoint
 - `delegator`: signing key (inline or file), DID, indexing/egress-tracking
-  service DIDs and proofs (inline or file), upload service DID
+  service DIDs and proofs (inline or file), signing service proof (file,
+  required), upload service DID
 - `contract`: chain RPC endpoint, payments/service/registry contract
   addresses, transactor (chain ID, key or keystore)
 
-The service identity is an Ed25519 key; the indexing and egress-tracking
-proofs are delegations *to* this delegator that it re-delegates to nodes.
+The service identity is an Ed25519 key; the indexing, egress-tracking and
+signing proofs are delegations *to* this delegator that it re-delegates to
+nodes. The signing proof names the signing service as its subject, so that
+service needs no DID setting of its own.
 
 ## Key dependencies
 

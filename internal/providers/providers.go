@@ -192,6 +192,28 @@ func ProvideEgressTrackingServiceProof(params EgressTrackingServiceProofParams) 
 	return EgressTrackingServiceProofResult{EgressTrackingServiceProof: proof}, nil
 }
 
+type SigningServiceProofParams struct {
+	fx.In
+	Config *config.Config
+}
+
+type SigningServiceProofResult struct {
+	fx.Out
+	SigningServiceProof ucan.Delegation `name:"signing_service_proof"`
+}
+
+func ProvideSigningServiceProof(params SigningServiceProofParams) (SigningServiceProofResult, error) {
+	data, err := os.ReadFile(params.Config.Delegator.SigningServiceProofFile)
+	if err != nil {
+		return SigningServiceProofResult{}, fmt.Errorf("failed to read signing service proof file: %w", err)
+	}
+	proof, err := delegation.Decode(data)
+	if err != nil {
+		return SigningServiceProofResult{}, fmt.Errorf("failed to parse signing service proof: %w", err)
+	}
+	return SigningServiceProofResult{SigningServiceProof: proof}, nil
+}
+
 type SmartContractOperator struct {
 	o *operator.Service
 }
