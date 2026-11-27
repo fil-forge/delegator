@@ -99,8 +99,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Forge Central's dev stage pins this image by digest, so the run that
-      # published it is the one that knows what to deploy.
+      # Forge Central's staging environment pins this image by digest, so the
+      # run that published it is the one that knows what to deploy.
       - name: Resolve the source pull request
         id: source
         env:
@@ -120,7 +120,7 @@ jobs:
           owner: fil-forge
           repositories: infra-central
 
-      - name: Request a digest bump in the Forge Central "dev" environment
+      - name: Request a digest bump in the Forge Central "staging" environment
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
           DIGEST: ${{ steps.build.outputs.digest }}
