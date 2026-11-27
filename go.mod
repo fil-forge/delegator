@@ -12,7 +12,7 @@ require (
 	github.com/fil-forge/libforge v0.0.0-20261123132321-e3267015aa44
 	github.com/fil-forge/ucantone v0.0.0-20261123131543-0ef2b25abb66
 	github.com/ipfs/go-log/v2 v2.9.2
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/spf13/cobra v1.10.2
@@ -78,7 +78,7 @@ require (
 	github.com/ipfs/go-cid v0.6.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/puddle/v2 v2.2.3 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
